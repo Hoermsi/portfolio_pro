@@ -3,4 +3,4 @@
 Wird vom In-App-Updater (Vergleich mit dem neuesten GitHub-Release) und vom
 Installer (AppVersion) gemeinsam genutzt. Format: Semantic Versioning "MAJOR.MINOR.PATCH".
 """
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
