@@ -78,9 +78,12 @@ def _render_rebalancing(rows: list[dict], total: float):
 
 def _render_performance(history: pd.DataFrame | None):
     st.markdown("#### Entwicklung")
-    if history is None or len(history) < 2:
-        st.caption("Noch zu wenig Verlaufsdaten. Beim Öffnen des Dashboards wird täglich ein Snapshot gespeichert.")
+    if history is None or history.empty:
+        st.caption("Noch keine Verlaufsdaten. Beim Öffnen des Dashboards wird täglich ein Snapshot gespeichert.")
         return
+    if len(history) < 2:
+        st.caption("Der Verlauf beginnt gerade erst - jeder Tag fügt einen weiteren Datenpunkt hinzu. "
+                   "Projektion und Vergleich kannst du trotzdem schon nutzen.")
     modus = st.radio("Modus", ["Projektion", "Vergleich"], horizontal=True,
                      label_visibility="collapsed", key="dashboard_mode")
     if modus == "Projektion":
@@ -115,6 +118,9 @@ def _render_projection(history: pd.DataFrame):
 
     monthly = float(profile["monthly_contribution"])
     port = history["Gesamt"].dropna()
+    if port.empty or float(port.iloc[-1]) <= 0:
+        st.caption("Sobald dein Portfolio einen Wert > 0 hat, erscheint hier die Projektion.")
+        return
     fig = go.Figure()
     fig.add_scatter(x=port.index, y=port, name="Gesamtwert", mode="lines",
                     line=dict(color=_C_ACTUAL))
@@ -156,31 +162,43 @@ def _render_comparison(history: pd.DataFrame):
     port = history[overlay].dropna()
     if overlay != "Gesamt":
         port = port[port > 0]
-    if port.empty:
-        st.caption(f"Für {overlay} liegen noch keine Snapshot-Daten vor.")
-        return
-    anchor = port.index[0]
-    port_pct = performance.pct_from_anchor(port, anchor)
 
-    # Benchmark-Zeitfenster: gewählter Kontext, mindestens aber bis zum Anker zurück,
-    # damit dort überhaupt rebasiert werden kann.
-    since_anchor = (date.today() - anchor.date()).days + 1
-    days = max(since_anchor, _COMPARE_RANGES[zeitraum])
+    # Portfolio-Anker nur, wenn ein Wert > 0 vorliegt; sonst Benchmark solo.
+    anchor = None
+    port_pct = None
+    if not port.empty and float(port.iloc[-1]) > 0:
+        anchor = port.index[0]
+        port_pct = performance.pct_from_anchor(port, anchor)
+
+    # Benchmark-Zeitfenster: gewählter Kontext, mit Anker mindestens bis dorthin
+    # zurück (damit dort rebasiert werden kann), ohne Anker der gewählte Zeitbereich.
+    if anchor is not None:
+        since_anchor = (date.today() - anchor.date()).days + 1
+        days = max(since_anchor, _COMPARE_RANGES[zeitraum])
+    else:
+        days = _COMPARE_RANGES[zeitraum]
     bench = performance.benchmark_series(_BENCHMARKS[benchmark], days=days)
 
     fig = go.Figure()
     fig.add_hline(y=0, line_color="#26344d", line_width=1)
     if bench is not None:
-        bench_pct = performance.pct_from_anchor(bench, anchor)
+        # Ohne Portfolio-Anker den Benchmark auf seinen eigenen Fensterstart rebasen.
+        bench_anchor = anchor if anchor is not None else bench.index[0]
+        bench_pct = performance.pct_from_anchor(bench, bench_anchor)
         if bench_pct is not None:
             fig.add_scatter(x=bench_pct.index, y=bench_pct, name=benchmark, mode="lines",
                             line=dict(color=_C_BENCH))
-    else:
+    elif port_pct is not None:
         st.caption(f"{benchmark} ist momentan nicht verfügbar - nur dein Portfolio wird gezeigt.")
-    fig.add_scatter(x=port_pct.index, y=port_pct, name=f"Portfolio: {overlay}",
-                    mode="lines+markers", line=dict(color=_C_PORT))
-    if len(port_pct) < 2:
-        st.caption("Dein Portfolio hat erst einen Datenpunkt - die Vergleichslinie wächst mit jedem Tag.")
+    else:
+        st.caption(f"{benchmark} ist momentan nicht verfügbar.")
+    if port_pct is not None:
+        fig.add_scatter(x=port_pct.index, y=port_pct, name=f"Portfolio: {overlay}",
+                        mode="lines+markers", line=dict(color=_C_PORT))
+        if len(port_pct) < 2:
+            st.caption("Dein Portfolio hat erst einen Datenpunkt - die Vergleichslinie wächst mit jedem Tag.")
+    else:
+        st.caption("Sobald dein Portfolio einen Wert > 0 hat, erscheint hier deine Vergleichslinie.")
     fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0),
                       legend=dict(orientation="h", y=1.08), xaxis_title=None,
                       yaxis_title="Veränderung seit Portfolio-Start (%)")

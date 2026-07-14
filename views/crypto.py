@@ -11,27 +11,29 @@ def render():
     components.page_header("Depots", "Krypto", "Kraken-Bestand, manuelle Positionen und langfristiger Verlauf.")
 
     key, secret = config.kraken_keys()
-    col1, col2 = st.columns([1, 3])
-    with col1:
+    disabled = not (key and secret)
+    c1, c2, c3 = st.columns([1, 1, 1], vertical_alignment="center")
+    with c1:
         sync_clicked = st.button("🔄 Kraken synchronisieren",
-                                 disabled=not (key and secret), use_container_width=True)
+                                 disabled=disabled, use_container_width=True)
+    with c2:
         reconstruct_clicked = st.button("📈 Wertverlauf aus Kraken-Historie",
-                                        disabled=not (key and secret), use_container_width=True,
+                                        disabled=disabled, use_container_width=True,
                                         help="Rekonstruiert den echten historischen Wert deines "
                                              "Krypto-Depots aus der kompletten Kraken-Ledger-Historie "
                                              "(tatsächliche Mengen pro Tag × historische Kurse). "
                                              "Bei neuen Trades erneut ausführen.")
+    with c3:
         with_cost = st.checkbox("Einstandskurse aus Handelshistorie", value=True,
-                                disabled=not (key and secret),
+                                disabled=disabled,
                                 help="Berechnet Durchschnitts-Kaufkurse (inkl. Gebühren) aus "
                                      "deinen Kraken-Trades. Benötigt die API-Berechtigung "
                                      "'Query Closed Orders & Trades'. USD-Käufe werden "
                                      "näherungsweise mit dem aktuellen USD/EUR-Kurs umgerechnet.")
-    with col2:
-        if not (key and secret):
-            st.info("Für den automatischen Abgleich `KRAKEN_API_KEY` und "
-                    "`KRAKEN_API_SECRET` in die `.env` eintragen "
-                    "(Berechtigungen: **Query Funds** + **Query Closed Orders & Trades**).")
+    if disabled:
+        st.info("Für den automatischen Abgleich `KRAKEN_API_KEY` und "
+                "`KRAKEN_API_SECRET` in die `.env` eintragen "
+                "(Berechtigungen: **Query Funds** + **Query Closed Orders & Trades**).")
 
     if sync_clicked:
         try:

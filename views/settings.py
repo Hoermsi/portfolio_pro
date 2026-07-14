@@ -72,25 +72,38 @@ def _render_api_keys():
     _api_key_row("Kraken API Secret", "kraken_api_secret", "KRAKEN_API_SECRET", None)
 
 
+def _save_api_key_callback(meta_key: str, label: str):
+    """Läuft vor dem Rerun - hier darf der Widget-State noch verändert werden."""
+    val = st.session_state.get(f"apikey_{meta_key}", "")
+    config.save_api_key(meta_key, val)
+    st.session_state[f"apikey_{meta_key}"] = ""
+    st.session_state[f"_apikey_msg_{meta_key}"] = f"{label} gespeichert."
+
+
+def _delete_api_key_callback(meta_key: str, label: str, from_env: bool):
+    config.save_api_key(meta_key, None)
+    msg = f"{label} entfernt." + (" .env-Wert wird wieder verwendet." if from_env else "")
+    st.session_state[f"_apikey_msg_{meta_key}"] = msg
+
+
 def _api_key_row(label: str, meta_key: str, env_key: str, help_text: str | None):
     import os
     from_db = bool(db.get_meta(meta_key))
     from_env = bool(os.getenv(env_key))
     status = "✓ in der App gespeichert" if from_db else ("✓ aus .env" if from_env else "— nicht gesetzt")
     st.markdown(f"**{label}** · {status}")
-    new_val = st.text_input(label, type="password", key=f"apikey_{meta_key}",
-                            label_visibility="collapsed", placeholder="Neuen Wert eingeben …",
-                            help=help_text)
+    st.text_input(label, type="password", key=f"apikey_{meta_key}",
+                 label_visibility="collapsed", placeholder="Neuen Wert eingeben …",
+                 help=help_text)
+    new_val = st.session_state.get(f"apikey_{meta_key}", "")
     c1, c2 = st.columns([1, 1])
-    if c1.button("Speichern", key=f"save_{meta_key}", disabled=not new_val):
-        config.save_api_key(meta_key, new_val)
-        st.session_state[f"apikey_{meta_key}"] = ""
-        st.success(f"{label} gespeichert.")
-        st.rerun()
-    if c2.button("Entfernen", key=f"del_{meta_key}", disabled=not from_db):
-        config.save_api_key(meta_key, None)
-        st.success(f"{label} entfernt." + (" .env-Wert wird wieder verwendet." if from_env else ""))
-        st.rerun()
+    c1.button("Speichern", key=f"save_{meta_key}", disabled=not new_val,
+             on_click=_save_api_key_callback, args=(meta_key, label))
+    c2.button("Entfernen", key=f"del_{meta_key}", disabled=not from_db,
+             on_click=_delete_api_key_callback, args=(meta_key, label, from_env))
+    msg = st.session_state.pop(f"_apikey_msg_{meta_key}", None)
+    if msg:
+        st.success(msg)
 
 
 def _render_risk_profile():
