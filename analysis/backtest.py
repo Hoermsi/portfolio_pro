@@ -55,14 +55,8 @@ def _stock_period(days: int) -> str:
     return "1y"
 
 
-def _series_eur(symbol: str, asset_type: str, days: int) -> pd.Series | None:
-    """Tages-Schlusskurse in EUR als Series (Index auf Tagesdatum normalisiert)."""
-    if asset_type == "crypto":
-        df = crypto_data.get_history(symbol, days=days)
-        fx = 1.0
-    else:
-        df = stock_data.get_history(symbol, _stock_period(days))
-        fx = fx_data.get_fx_to_eur(stock_data.get_currency(symbol)) or 1.0
+def _normalize_close(df: pd.DataFrame | None, fx: float) -> pd.Series | None:
+    """'Close'-Spalte -> bereinigte EUR-Series (Index auf Tagesdatum normalisiert)."""
     if df is None or "Close" not in df:
         return None
     close = df["Close"].dropna()
@@ -71,6 +65,65 @@ def _series_eur(symbol: str, asset_type: str, days: int) -> pd.Series | None:
     close.index = pd.to_datetime(close.index).normalize()
     close = close[~close.index.duplicated(keep="last")].sort_index()
     return close * fx
+
+
+def _yf_series_eur(ticker: str, days: int, fx: float) -> pd.Series | None:
+    """yfinance-Tageskurse eines Tickers als EUR-Series (mit fx multipliziert)."""
+    return _normalize_close(stock_data.get_history(ticker, _stock_period(days)), fx)
+
+
+# Toleranzband: aktueller Reihen-Schlusskurs vs. Live-Kurs. yfinance führt echte
+# Altcoins teils unter Zahlen-Tickern (z.B. UNI7083-USD); "UNI-USD"/"UNI-EUR"
+# treffen dann einen fremden Microcap - solche Kollisionen liegen um Größen-
+# ordnungen daneben und werden über diesen Abgleich verworfen.
+_SANITY_LOW, _SANITY_HIGH = 0.2, 5.0
+
+
+def _crypto_series_eur(symbol: str, days: int) -> pd.Series | None:
+    """Beste verfügbare, plausible Krypto-Historie in EUR aus mehreren Quellen.
+
+    yfinance reicht für große Coins viele Jahre zurück (CoinGecko frei nur ~365
+    Tage, Kraken-OHLC ~720). Quellen: EUR-Paar (nativ), USD-Paar × aktueller FX,
+    CoinGecko/Kraken. Jede yfinance-Reihe wird gegen den Live-Kurs plausibilisiert
+    (Schutz vor Yahoo-Ticker-Kollisionen); nur bestandene Reihen zählen. Gewählt
+    wird die längste verbliebene. Ohne Live-Referenz wird die vertrauenswürdige
+    CoinGecko/Kraken-Reihe bevorzugt. FX-Näherung wie im Aktien-Zweig: %-Rendite
+    bleibt exakt (FX kürzt sich), €-Summen approximativ.
+    """
+    live = crypto_data.get_price_eur(symbol)
+    cg = _normalize_close(crypto_data.get_history(symbol, days=days), 1.0)
+
+    def _plausible(s: pd.Series | None) -> bool:
+        if s is None:
+            return False
+        if not live or live <= 0:
+            return False  # ohne Referenz keine yfinance-Reihe blind vertrauen
+        return _SANITY_LOW <= float(s.iloc[-1]) / live <= _SANITY_HIGH
+
+    usd_fx = fx_data.get_fx_to_eur("USD") or None
+    candidates: list[pd.Series] = []
+    eur = _yf_series_eur(f"{symbol}-EUR", days, 1.0)
+    if _plausible(eur):
+        candidates.append(eur)
+    if usd_fx:
+        usd = _yf_series_eur(f"{symbol}-USD", days, usd_fx)
+        if _plausible(usd):
+            candidates.append(usd)
+    if cg is not None:
+        candidates.append(cg)  # CoinGecko/Kraken gilt als vertrauenswürdig
+
+    if not candidates:
+        return cg  # ohne Live-Referenz bleibt nur die (evtl. None) CoinGecko-Reihe
+    # Längste Historie gewinnt; Reihenfolge bricht Gleichstände (EUR vor USD vor CG).
+    return min(candidates, key=lambda s: s.index[0])
+
+
+def _series_eur(symbol: str, asset_type: str, days: int) -> pd.Series | None:
+    """Tages-Schlusskurse in EUR als Series (Index auf Tagesdatum normalisiert)."""
+    if asset_type == "crypto":
+        return _crypto_series_eur(symbol, days)
+    fx = fx_data.get_fx_to_eur(stock_data.get_currency(symbol)) or 1.0
+    return _normalize_close(stock_data.get_history(symbol, _stock_period(days)), fx)
 
 
 def _build_curve(series_map: dict[str, tuple[float, pd.Series]],

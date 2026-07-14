@@ -33,7 +33,8 @@ def render():
                                key="bt_date")
 
     st.caption("Annahme: deine **heutigen** Stückzahlen zum Kurs am Kaufdatum gekauft. "
-               "Krypto-Historie ist begrenzt (~1–2 Jahre); ältere Daten werden übersprungen.")
+               "Große Coins reichen mehrere Jahre zurück; sehr neue oder kleine Coins "
+               "evtl. kürzer – ohne Kurs am Kaufdatum werden sie übersprungen.")
 
     if not st.button("▶️ Backtest ausführen", type="primary"):
         return
