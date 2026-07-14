@@ -45,7 +45,7 @@ python -m PyInstaller --onefile --name PortfolioPro `
 $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
 if (-not $iscc) {
     $guess = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-    if (Test-Path $guess) { $iscc = $guess } else { throw "ISCC.exe (Inno Setup 6) nicht gefunden – bitte installieren." }
+    if (Test-Path $guess) { $iscc = $guess } else { throw "ISCC.exe (Inno Setup 6) nicht gefunden - bitte installieren." }
 } else { $iscc = $iscc.Source }
 
 Write-Host "Kompiliere Installer ..."
