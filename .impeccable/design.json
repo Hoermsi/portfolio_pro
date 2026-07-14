@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-12T00:00:00Z",
+  "title": "Design System: Portfolio Pro",
+  "extensions": {
+    "colorMeta": {
+      "bg-void": { "role": "neutral", "displayName": "Void Navy", "canonical": "oklch(19% 0.03 260)", "tonalRamp": ["#05070c", "#0b1120", "#101827", "#172033", "#26344d", "#4a5a7a", "#aab7cc", "#e5edf9"] },
+      "bg-surface": { "role": "neutral", "displayName": "Surface Slate", "canonical": "oklch(23% 0.03 260)", "tonalRamp": ["#05070c", "#0b1120", "#111827", "#172033", "#26344d", "#4a5a7a", "#aab7cc", "#e5edf9"] },
+      "accent-eyebrow": { "role": "secondary", "displayName": "Mint Eyebrow", "canonical": "oklch(85% 0.14 160)", "tonalRamp": ["#0c3324", "#125a3f", "#1c8a61", "#2fb886", "#6ee7b7", "#9df2cf", "#c8f8e4", "#eafdf5"] },
+      "data-positive": { "role": "semantic", "displayName": "Data Green", "canonical": "oklch(72% 0.19 149)", "tonalRamp": ["#052e12", "#0b4d1e", "#158032", "#1ba847", "#23c55e", "#5eda85", "#a4edbb", "#daf9e3"] },
+      "data-negative": { "role": "semantic", "displayName": "Data Red", "canonical": "oklch(63% 0.22 25)", "tonalRamp": ["#3d0906", "#6b120c", "#a31c12", "#d92a1c", "#ff4b4b", "#ff8080", "#ffb3b3", "#ffe0e0"] },
+      "metric-positive": { "role": "semantic", "displayName": "Metric Green", "canonical": "oklch(80% 0.17 149)", "tonalRamp": ["#093018", "#0f5228", "#188540", "#2eab58", "#4ade80", "#82e8a8", "#b6f2cd", "#e2faec"] },
+      "metric-negative": { "role": "semantic", "displayName": "Metric Rose", "canonical": "oklch(70% 0.15 15)", "tonalRamp": ["#3d0a12", "#6b1420", "#a32032", "#d9304a", "#fb7185", "#fda3b0", "#fecdd6", "#ffe9ed"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Seitentitel via st.title, einmal pro Seite direkt unter dem Eyebrow." },
+      "title": { "displayName": "Title", "purpose": "Karten- und Abschnittsüberschriften (#### Level)." },
+      "body": { "displayName": "Body", "purpose": "Fließtext, Tabellen, Chat-Antworten." },
+      "label": { "displayName": "Eyebrow Label", "purpose": "Einzige Uppercase-Rolle im System, ausschließlich für .pp-eyebrow über Seitentiteln." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Invertierter Fill statt Akzent- oder G/V-Farbe, damit kostenpflichtige/destruktive Aktionen nicht wie eine Verlust-Warnung aussehen.",
+      "html": "<button class=\"ds-btn-primary\">Neue KI-Anweisungen einholen</button>",
+      "css": ".ds-btn-primary { background-color: #e5edf9; color: #0b1120; border: 1px solid #e5edf9; border-radius: 8px; padding: .5rem 1rem; font-weight: 600; transition: background-color .15s, border-color .15s; } .ds-btn-primary:hover { background-color: #c7d2e3; border-color: #c7d2e3; } .ds-btn-primary:focus-visible { outline: 2px solid #6ee7b7; outline-offset: 2px; } .ds-btn-primary:disabled { background-color: #26344d; border-color: #26344d; color: #aab7cc; opacity: .6; }"
+    },
+    {
+      "name": "Metric Card",
+      "kind": "card",
+      "refersTo": "metric-card",
+      "description": "Kennzahl mit Label und Wert, tonaler Verlauf statt Schatten für Tiefe.",
+      "html": "<div class=\"ds-metric-card\"><div class=\"ds-metric-label\">Aktueller Kontostand</div><div class=\"ds-metric-value\">12.480,50 €</div></div>",
+      "css": ".ds-metric-card { background: linear-gradient(145deg, #172033, #111827); border: 1px solid #26344d; border-radius: 14px; padding: 1rem 1.1rem; } .ds-metric-label { color: #aab7cc; font-size: .88rem; } .ds-metric-value { color: #f8fafc; font-weight: 650; font-size: 1.6rem; margin-top: .2rem; }"
+    },
+    {
+      "name": "Content Card",
+      "kind": "card",
+      "refersTo": "pp-card",
+      "description": "Einfarbige Fläche für Gruppierungen ohne Kennzahl-Charakter (z.B. Report-Abschnitte).",
+      "html": "<div class=\"ds-pp-card\">Inhalt der Karte</div>",
+      "css": ".ds-pp-card { background: #111827; border: 1px solid #26344d; border-radius: 14px; padding: 1rem 1.1rem; height: 100%; color: #e5edf9; }"
+    },
+    {
+      "name": "Eyebrow Label",
+      "kind": "custom",
+      "refersTo": "eyebrow-label",
+      "description": "Getrackte Uppercase-Kennzeichnung direkt über einem Seitentitel, einzige Verwendung des Akzenttons.",
+      "html": "<div class=\"ds-eyebrow\">Übersicht</div>",
+      "css": ".ds-eyebrow { color: #6ee7b7; font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .25rem; }"
+    },
+    {
+      "name": "G/V Badge (Positive)",
+      "kind": "custom",
+      "refersTo": "data-positive",
+      "description": "Inline-Gewinn-Kennzeichnung in Tabellenzellen (Pandas-Styler) und Metric-Zeilen.",
+      "html": "<span class=\"ds-gv-positive\">+4,2 %</span>",
+      "css": ".ds-gv-positive { color: #23c55e; font-weight: 600; }"
+    },
+    {
+      "name": "G/V Badge (Negative)",
+      "kind": "custom",
+      "refersTo": "data-negative",
+      "description": "Inline-Verlust-Kennzeichnung in Tabellenzellen (Pandas-Styler) und Metric-Zeilen.",
+      "html": "<span class=\"ds-gv-negative\">-1,8 %</span>",
+      "css": ".ds-gv-negative { color: #ff4b4b; font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Der Portfolio Manager",
+    "overview": "Portfolio Pro sieht aus, wie es sich anfühlt, das eigene Depot abends zu prüfen: ein dunkles, ruhiges Instrumentenbrett, das Zahlen zuerst zeigt und keine Ablenkung duldet. Der Bildschirm ist fast durchgängig ein tiefes Marineblau-Schwarz (#0b1120), in dem Karten sich nur durch einen minimal helleren Verlauf und eine dünne Border vom Hintergrund abheben — keine Schatten, keine Spielereien. Farbe wird knapp eingesetzt und immer bedeutungstragend: Grün und Rot markieren Gewinn und Verlust, ein einzelnes Mint-Grün markiert Rubriken-Eyebrows, der Rest bleibt Graublau in Abstufungen. Das System lehnt bewusst zwei verbreitete Muster ab: das generische graue SaaS-Dashboard mit austauschbaren KPI-Kacheln und Gradient-Zahlen, und das verspielte Consumer-Fintech mit bunten Illustrationen. Stattdessen wirkt Portfolio Pro wie professionelle Terminal-Software — seriös, dicht mit echten Zahlen, ohne dekorative Distanz zwischen Nutzer und Daten.",
+    "keyCharacteristics": [
+      "Fast schwarzer, marineblauer Grund als Standard-Bühne, kein warmes Grau oder Creme",
+      "Karten und Metrics heben sich durch tonale Verläufe + 1px-Border ab, nie durch Schlagschatten",
+      "Grün/Rot ausschließlich für Gewinn/Verlust-Semantik, sonst zurückhaltende Graublau-Palette",
+      "Ein einziger Akzentton (Mint-Grün #6ee7b7) für Eyebrow-Labels als einzige 'Marken'-Farbe",
+      "Helles Theme spiegelt exakt dieselbe Struktur, invertiert nur die Tonwerte"
+    ],
+    "rules": [
+      { "name": "Die Ein-Akzent-Regel", "body": "Mint-Grün (#6ee7b7) ist der einzige nicht-semantische Farbakzent im System und erscheint ausschließlich in Eyebrow-Labels. Keine weitere Markenfarbe für Buttons, Links oder Icons einführen.", "section": "colors" },
+      { "name": "Die Doppel-Ampel-Inkonsistenz", "body": "Data Green/Red (#23c55e/#ff4b4b) und Metric Green/Rose (#4ade80/#fb7185) sind zwei separate, historisch gewachsene Paare für dieselbe Gewinn/Verlust-Semantik. Bei nächster Gelegenheit auf ein einziges Paar vereinheitlichen, statt ein drittes hinzuzufügen.", "section": "colors" },
+      { "name": "Die Eine-Uppercase-Regel", "body": "Getrackte Großbuchstaben-Labels sind ausschließlich der Eyebrow über Seitentiteln vorbehalten — nicht für Buttons, Tabs oder Badges wiederverwenden.", "section": "typography" },
+      { "name": "Die Flach-durch-Verlauf-Regel", "body": "Wo andere Systeme einen Schatten für Tiefe einsetzen würden, nutzt Portfolio Pro einen 145°-Verlauf zwischen zwei eng benachbarten Surface-Tönen plus 1px-Border. Kein box-shadow einführen, auch nicht bei Hover.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do den Void-Navy-Grund (#0b1120) als Standard-Bühne beibehalten — kein warmes Grau, kein Creme, keine helle Standardfläche im Dunkelmodus.",
+      "Do Tiefe ausschließlich über den 145°-Verlauf + 1px-Border erzeugen (Metric Cards, .pp-card), niemals über box-shadow.",
+      "Do Grün/Rot strikt für Gewinn/Verlust-Semantik reservieren — keine dekorative Verwendung dieser Farben anderswo.",
+      "Do neue Kennzahlen konsequent als Streamlit-st.metric mit demselben Card-Styling einbinden, damit alle Seiten (Aktien, Krypto, Cash) gleich aussehen.",
+      "Do Eyebrow-Labels (.pp-eyebrow) für Seitentitel weiterverwenden, aber nirgends sonst — die Knappheit ist der Punkt."
+    ],
+    "donts": [
+      "Don't ein generisches SaaS-Dashboard-Grau einführen — keine austauschbaren Card-Grids mit Gradient-Zahlen wie aus der Box.",
+      "Don't verspieltes Consumer-Fintech-Styling verwenden — keine bunten Illustrationen, keine Konfetti-/Erfolgs-Animationen, keine runden Maskottchen-Icons.",
+      "Don't ein drittes Grün/Rot-Paar hinzufügen, um die bestehende Doppel-Ampel-Inkonsistenz zu lösen — bei Gelegenheit auf eines der beiden bestehenden Paare vereinheitlichen.",
+      "Don't Drop-Shadows für Karten oder Buttons einführen, auch nicht subtil bei Hover — bricht die Flach-durch-Verlauf-Regel.",
+      "Don't eine zweite Akzentfarbe neben Mint-Eyebrow (#6ee7b7) einführen, ohne eine klare neue Rolle dafür zu definieren.",
+      "Don't st.button(type=\"primary\") ungestylt lassen — Streamlits Default-Rot (#ff4b4b) ist identisch mit Data Red. Immer über button[kind=\"primary\"] in apply_theme() führen."
+    ]
+  }
+}

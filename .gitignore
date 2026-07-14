@@ -1,0 +1,16 @@
+.env
+portfolio.db
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build-/Installer-Artefakte (siehe build/README.md)
+build/runtime/
+build/dist/
+build/Output/
+build/_downloads/
+build/_pybuild/
+*.exe
+
+# Laufzeitzustand lokaler Preview-Server (enthält Session-Token)
+.impeccable/live/
