@@ -11,7 +11,7 @@ from ui import components
 def render():
     components.page_header("Depots", "Aktien", "Positionen, Konten und Import an einem Ort.")
 
-    tab_pos, tab_import = st.tabs(["Positionen", "Flatex-Import"])
+    tab_pos, tab_import, tab_watch = st.tabs(["Positionen", "Flatex-Import", "Watchlist"])
 
     with tab_pos:
         positions.render_positions_table("stock")
@@ -21,6 +21,9 @@ def render():
             symbol_help="yfinance-Ticker, z.B. NVDA, AAPL, SAP.DE, oder ISIN",
         )
         st.caption("💡 Detail-Analyse eines Werts: Seite **Einzelwert-Analyse**.")
+
+    with tab_watch:
+        positions.render_watchlist("stock")
 
     with tab_import:
         st.info("Ein erneuter Upload ersetzt ausschließlich den Bestand des gewählten Kontos. Prüfe die Auswahl vor dem Synchronisieren.")

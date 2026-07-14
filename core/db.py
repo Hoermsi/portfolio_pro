@@ -126,6 +126,18 @@ CREATE TABLE IF NOT EXISTS kraken_value_history (
     snap_date TEXT PRIMARY KEY,
     value_eur REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS watchlist (
+    id INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    asset_type TEXT NOT NULL CHECK (asset_type IN ('stock', 'crypto')),
+    name TEXT DEFAULT '',
+    target_above REAL,
+    target_below REAL,
+    day_move_pct REAL,
+    rsi_alert INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT,
+    UNIQUE (symbol, asset_type)
+);
 """
 
 
@@ -310,6 +322,55 @@ def get_position_quantity(symbol: str, asset_type: str) -> float:
             (symbol.strip().upper(), asset_type),
         ).fetchone()
     return float(row["q"] or 0.0)
+
+
+# --- WATCHLIST (Favoriten + Kursalarme) ---
+
+def add_watchlist(symbol: str, asset_type: str, name: str = "") -> int:
+    """Symbol zur Watchlist hinzufügen (idempotent pro symbol+asset_type)."""
+    with _connect() as con:
+        cur = con.execute(
+            "INSERT INTO watchlist (symbol, asset_type, name, created_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (symbol, asset_type) DO NOTHING",
+            (symbol.strip().upper(), asset_type, (name or "").strip(),
+             datetime.now().isoformat(timespec="seconds")),
+        )
+        return cur.lastrowid
+
+
+def list_watchlist(asset_type: str | None = None) -> list[dict]:
+    q = "SELECT * FROM watchlist"
+    params: tuple = ()
+    if asset_type:
+        q += " WHERE asset_type = ?"
+        params = (asset_type,)
+    q += " ORDER BY symbol"
+    with _connect() as con:
+        return [dict(r) for r in con.execute(q, params).fetchall()]
+
+
+def update_watchlist_alert(watch_id: int, target_above: float | None,
+                           target_below: float | None, day_move_pct: float | None,
+                           rsi_alert: bool):
+    with _connect() as con:
+        con.execute(
+            "UPDATE watchlist SET target_above = ?, target_below = ?, "
+            "day_move_pct = ?, rsi_alert = ? WHERE id = ?",
+            (target_above, target_below, day_move_pct, 1 if rsi_alert else 0, watch_id),
+        )
+
+
+def set_watchlist_name(watch_id: int, name: str):
+    name = (name or "").strip()
+    if not name:
+        return
+    with _connect() as con:
+        con.execute("UPDATE watchlist SET name = ? WHERE id = ?", (name, watch_id))
+
+
+def remove_watchlist(watch_id: int):
+    with _connect() as con:
+        con.execute("DELETE FROM watchlist WHERE id = ?", (watch_id,))
 
 
 # --- BUCHUNGSJOURNAL (manuelle Käufe und Verkäufe) ---

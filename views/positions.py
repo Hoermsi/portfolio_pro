@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from analysis import performance
+from analysis import alerts, performance
 from core import db
 from core.portfolio import total_value, valued_positions
 from data import crypto as crypto_data
@@ -225,6 +225,113 @@ def _render_category_overview(vals) -> None:
               .format({"Wert (€)": "{:,.2f}", "G/V (€)": "{:+,.2f}",
                        "G/V (%)": "{:+.1f}"}, na_rep="—"))
     st.dataframe(styled, use_container_width=True, hide_index=True)
+
+
+def _resolve_watchlist_name(symbol: str, asset_type: str) -> str:
+    """Anzeigenamen für ein neues Watchlist-Symbol best effort holen."""
+    try:
+        if asset_type == "crypto":
+            return crypto_data.get_market_data(symbol).get("name") or ""
+        return stock_data.get_fundamentals(symbol).get("name") or ""
+    except Exception:
+        return ""
+
+
+def render_watchlist(asset_type: str) -> None:
+    """Favoriten-Watchlist mit Kennzahlen und konfigurierbaren Kursalarmen.
+    Gemeinsam für Aktien- und Krypto-Seite (asset_type steuert Kursquelle)."""
+    st.markdown("### ⭐ Watchlist")
+    st.caption("Favorisierte Werte beobachten und Kursalarme setzen – ausgelöste "
+               "Alarme erscheinen auf dem Dashboard.")
+
+    # --- Hinzufügen ---
+    with st.form(f"watch_add_{asset_type}", clear_on_submit=True):
+        c1, c2 = st.columns([3, 1])
+        help_txt = ("Krypto-Symbol, z.B. BTC, ETH, SOL" if asset_type == "crypto"
+                    else "yfinance-Ticker, z.B. NVDA, AAPL, SAP.DE")
+        symbol = c1.text_input("Symbol", help=help_txt,
+                               label_visibility="collapsed",
+                               placeholder="Symbol zur Watchlist hinzufügen …").strip().upper()
+        add = c2.form_submit_button("➕ Hinzufügen", use_container_width=True)
+    if add and symbol:
+        resolvable = (crypto_data.resolve_id(symbol) is not None if asset_type == "crypto"
+                      else stock_data.resolves(symbol))
+        if not resolvable:
+            st.error(f"'{symbol}' konnte nicht aufgelöst werden – Symbol prüfen.")
+        else:
+            name = _resolve_watchlist_name(symbol, asset_type)
+            db.add_watchlist(symbol, asset_type, name)
+            st.rerun()
+
+    entries = db.list_watchlist(asset_type)
+    if not entries:
+        st.info("Noch keine Favoriten. Füge oben ein Symbol hinzu.")
+        return
+
+    # --- Kennzahlen-Tabelle ---
+    metrics_by_id: dict[int, dict] = {}
+    rows = []
+    with st.spinner("Lade Kurse …"):
+        for e in entries:
+            m = alerts.asset_metrics(e["symbol"], e["asset_type"])
+            metrics_by_id[e["id"]] = m
+            schwellen = []
+            if e["target_above"] is not None:
+                schwellen.append(f"↑{e['target_above']:,.2f}")
+            if e["target_below"] is not None:
+                schwellen.append(f"↓{e['target_below']:,.2f}")
+            if e["day_move_pct"] is not None:
+                schwellen.append(f"±{e['day_move_pct']:.1f}%")
+            if e["rsi_alert"]:
+                schwellen.append("RSI")
+            rows.append({
+                "Symbol": e["symbol"],
+                "Name": e["name"] or "",
+                "Kurs (€)": round(m["price_eur"], 4) if m["price_eur"] is not None else None,
+                "Tag (%)": round(m["day_pct"], 2) if m["day_pct"] is not None else None,
+                "RSI": round(m["rsi"], 0) if m["rsi"] is not None else None,
+                "Alarme": " · ".join(schwellen) if schwellen else "—",
+            })
+    df = pd.DataFrame(rows)
+    styled = (df.style
+              .map(_gv_style, subset=["Tag (%)"])
+              .format({"Kurs (€)": "{:,.4f}", "Tag (%)": "{:+.2f}", "RSI": "{:.0f}"}, na_rep="—"))
+    st.dataframe(styled, use_container_width=True, hide_index=True)
+
+    # --- Alarme konfigurieren / entfernen ---
+    with st.expander("Alarme bearbeiten oder Favorit entfernen"):
+        options = {f"{e['symbol']} · {e['name'] or '—'}": e for e in entries}
+        sel = st.selectbox("Favorit wählen", list(options.keys()), key=f"watch_sel_{asset_type}")
+        e = options[sel]
+        m = metrics_by_id.get(e["id"], {})
+        if m.get("price_eur") is not None:
+            st.caption(f"Aktueller Kurs: {m['price_eur']:,.2f} €")
+        c1, c2 = st.columns(2)
+        above = c1.number_input("Zielkurs oben (€, 0 = aus)", min_value=0.0,
+                                value=float(e["target_above"] or 0.0), format="%.4f",
+                                key=f"watch_above_{asset_type}")
+        below = c2.number_input("Zielkurs unten (€, 0 = aus)", min_value=0.0,
+                                value=float(e["target_below"] or 0.0), format="%.4f",
+                                key=f"watch_below_{asset_type}")
+        c3, c4 = st.columns(2)
+        day_move = c3.number_input("Tages-Sprung Alarm (±%, 0 = aus)", min_value=0.0,
+                                   value=float(e["day_move_pct"] or 0.0), step=0.5, format="%.1f",
+                                   key=f"watch_move_{asset_type}")
+        rsi_on = c4.checkbox("RSI-Alarm (>70 / <30)", value=bool(e["rsi_alert"]),
+                             key=f"watch_rsi_{asset_type}")
+        b1, b2 = st.columns(2)
+        if b1.button("Alarme speichern", key=f"watch_save_{asset_type}", use_container_width=True):
+            db.update_watchlist_alert(
+                e["id"],
+                above if above > 0 else None,
+                below if below > 0 else None,
+                day_move if day_move > 0 else None,
+                rsi_on,
+            )
+            st.rerun()
+        if b2.button("🗑️ Favorit entfernen", key=f"watch_del_{asset_type}", use_container_width=True):
+            db.remove_watchlist(e["id"])
+            st.rerun()
 
 
 def render_add_form(asset_type: str, symbol_help: str) -> None:

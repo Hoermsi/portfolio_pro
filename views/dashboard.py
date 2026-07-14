@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from analysis import performance
+from analysis import alerts, performance
 from core.portfolio import total_value, valued_positions
 from core.profile import risk_profile
 from ui import components
@@ -56,11 +56,14 @@ def _render_rebalancing(rows: list[dict], total: float):
         current = row["Wert"] / total * 100 if total else 0.0
         target = targets[row["key"]]
         deviation = current - target
+        # Positiv = aufbauen/kaufen, negativ = reduzieren/verkaufen (Ziel minus Ist).
+        adjust_eur = (target - current) / 100 * total if total else 0.0
         table.append({"Anlageklasse": row["Name"], "Ist": round(current, 1),
-                      "Ziel": round(target, 1), "Abweichung": round(deviation, 1)})
+                      "Ziel": round(target, 1), "Abweichung": round(deviation, 1),
+                      "Anpassung (€)": round(adjust_eur, 0)})
         if abs(deviation) >= 5:
             direction = "reduzieren" if deviation > 0 else "aufbauen"
-            hints.append(f"{row['Name']} {direction} ({deviation:+.1f} %-Pkt.)")
+            hints.append(f"{row['Name']} {direction} ({deviation:+.1f} %-Pkt. / {adjust_eur:+,.0f} €)")
     st.markdown("#### Zielallokation")
     st.dataframe(
         pd.DataFrame(table), hide_index=True, use_container_width=True,
@@ -68,8 +71,10 @@ def _render_rebalancing(rows: list[dict], total: float):
             "Ist": st.column_config.ProgressColumn("Ist (%)", min_value=0, max_value=100, format="%.1f %%"),
             "Ziel": st.column_config.NumberColumn("Ziel (%)", format="%.1f %%"),
             "Abweichung": st.column_config.NumberColumn("Abweichung", format="%+.1f %%"),
+            "Anpassung (€)": st.column_config.NumberColumn("Anpassung (€)", format="%+.0f €"),
         },
     )
+    st.caption("Anpassung (€): + = zukaufen, − = reduzieren, um die Zielallokation zu erreichen.")
     if hints:
         st.warning(" · ".join(hints))
     else:
@@ -248,6 +253,21 @@ def _render_attention(vals: list, total: float, rows: list[dict]):
         st.success("Keine auffälligen Konzentrationen oder Datenlücken erkannt.")
 
 
+def _render_alerts():
+    """Ausgelöste Kursalarme der Watchlist-Favoriten. Ohne Treffer unsichtbar."""
+    triggered = alerts.evaluate_watchlist()
+    if not triggered:
+        return
+    st.divider()
+    st.markdown("#### 🔔 Alarme")
+    for item in triggered:
+        label = item["name"] or item["symbol"]
+        typ = "Krypto" if item["asset_type"] == "crypto" else "Aktie"
+        for msg in item["triggers"]:
+            st.warning(f"**{label}** ({item['symbol']}, {typ}): {msg}")
+    st.divider()
+
+
 def render():
     components.page_header("Übersicht", "Dein Portfolio", "Vermögen, Entwicklung und die wichtigsten Signale auf einen Blick.")
     with st.spinner("Aktualisiere Kurse …"):
@@ -273,6 +293,8 @@ def render():
     c2.metric("Aktien", f"{stock_total:,.2f} €", f"{stock_total / total_wealth * 100:.1f} %" if total_wealth else None)
     c3.metric("Krypto", f"{crypto_total:,.2f} €", f"{crypto_total / total_wealth * 100:.1f} %" if total_wealth else None)
     c4.metric("Liquid", f"{bank_cash:,.2f} €", f"{bank_cash / total_wealth * 100:.1f} %" if total_wealth else None)
+
+    _render_alerts()
 
     all_vals = stock_vals + crypto_vals
     allocation = _allocation_rows(stock_total, crypto_total, bank_cash)

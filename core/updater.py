@@ -143,6 +143,10 @@ def _write_swap_script(source_dir: Path, install_dir: Path, relaunch: Path | Non
     """
     pid = os.getpid()
     relaunch_line = f'start "" "{relaunch}"' if relaunch else "rem kein Neustart konfiguriert"
+    # Gebündelter Interpreter der installierten App: <install>/runtime/python/python.exe
+    # (install_dir ist der Code-Ordner <install>/app). Nur dort läuft pip nach.
+    runtime_py = install_dir.parent / "runtime" / "python" / "python.exe"
+    requirements = install_dir / "requirements.txt"
     script = f"""@echo off
 rem Warten, bis Portfolio Pro (PID {pid}) beendet ist
 :waitloop
@@ -153,6 +157,8 @@ if not errorlevel 1 (
 )
 rem Code spiegeln (Nutzerdaten liegen getrennt und werden nicht angefasst)
 robocopy "{source_dir}" "{install_dir}" /MIR /XD .git __pycache__ .pytest_cache >NUL
+rem Neue/geänderte Abhängigkeiten in die gebündelte Laufzeit nachinstallieren
+if exist "{runtime_py}" if exist "{requirements}" "{runtime_py}" -m pip install -r "{requirements}" >NUL 2>&1
 {relaunch_line}
 """
     path = _swap_script_path()

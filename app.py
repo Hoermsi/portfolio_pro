@@ -54,7 +54,7 @@ with st.sidebar:
         pass
 
 # --- Navigation ---
-from views import ai_desk, ai_portfolio, asset_detail, cash, crypto, dashboard, settings, stocks, transactions  # noqa: E402
+from views import ai_desk, ai_portfolio, asset_detail, backtest, cash, crypto, dashboard, exports, settings, stocks, transactions  # noqa: E402
 
 pages = {
     "Übersicht": [
@@ -68,11 +68,13 @@ pages = {
     ],
     "Analysen": [
         st.Page(asset_detail.render, title="Einzelwert", icon="🔍", url_path="analyse"),
+        st.Page(backtest.render, title="Backtest", icon="⏮️", url_path="backtest"),
         st.Page(ai_desk.render, title="AI Desk", icon="🧠", url_path="ai-desk"),
         st.Page(ai_portfolio.render, title="KI-Portfolios", icon="🤖", url_path="ki-portfolio"),
     ],
     "Verwaltung": [
         st.Page(settings.render, title="Einstellungen", icon="⚙️", url_path="einstellungen"),
+        st.Page(exports.render, title="Exports", icon="📄", url_path="exports"),
     ],
 }
 st.navigation(pages).run()

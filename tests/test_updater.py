@@ -74,3 +74,18 @@ def test_network_error_returns_none(monkeypatch):
 
     monkeypatch.setattr(updater.requests, "get", _boom)
     assert updater.check_for_update() is None
+
+
+def test_swap_script_contains_pip_install(tmp_path, monkeypatch):
+    """Der Swap-Helfer installiert geänderte Abhängigkeiten in die Laufzeit nach."""
+    from core import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    install = tmp_path / "app"
+    install.mkdir()
+    path = updater._write_swap_script(src, install, None)
+    content = path.read_text(encoding="utf-8")
+    assert "pip install -r" in content
+    assert "requirements.txt" in content
+    assert "runtime" in content

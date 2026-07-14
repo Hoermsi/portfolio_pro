@@ -10,6 +10,14 @@ from ui import components
 def render():
     components.page_header("Depots", "Krypto", "Kraken-Bestand, manuelle Positionen und langfristiger Verlauf.")
 
+    tab_pos, tab_watch = st.tabs(["Positionen", "Watchlist"])
+    with tab_pos:
+        _render_positions_tab()
+    with tab_watch:
+        positions.render_watchlist("crypto")
+
+
+def _render_positions_tab():
     key, secret = config.kraken_keys()
     disabled = not (key and secret)
     c1, c2, c3 = st.columns([1, 1, 1], vertical_alignment="center")
