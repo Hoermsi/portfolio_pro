@@ -210,4 +210,6 @@ def _render_updates():
                     return
             st.info("Update vorbereitet. Die App wird jetzt beendet und aktualisiert sich. "
                     "Starte sie anschließend über die gewohnte Verknüpfung.")
-            st.stop()
+            import time
+            time.sleep(1.5)  # Meldung kurz sichtbar lassen, bevor der Prozess endet
+            updater.shutdown_app()
