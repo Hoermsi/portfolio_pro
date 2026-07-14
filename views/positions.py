@@ -64,8 +64,21 @@ def render_positions_table(asset_type: str) -> None:
         _backfill_names(all_vals, asset_type)
 
     # Tages-Snapshot des vollen Asset-Typs festhalten -> Verlauf wächst auch beim
-    # Öffnen dieser Seite (idempotent pro Tag, ungefilterter Gesamtwert).
+    # Öffnen dieser Seite (idempotent pro Tag, ungefilterter Gesamtwert - auch
+    # Kleinstbestände zählen zum echten Vermögen).
     db.save_snapshot(asset_type, total_value(all_vals))
+
+    # Krypto-"Staubreste" (< 5 €) blenden wir in der Ansicht aus - erschwerbar
+    # durch Rundungs-/Transfer-Reste, aber irrelevant für die Übersicht.
+    if asset_type == "crypto":
+        dust = [v for v in all_vals if v.value_eur is not None and v.value_eur < 5]
+        if dust:
+            all_vals = [v for v in all_vals if v.value_eur is None or v.value_eur >= 5]
+            st.caption(f"{len(dust)} Position(en) unter 5 € ausgeblendet: "
+                      + ", ".join(v.position.symbol for v in dust))
+        if not all_vals:
+            st.info("Nur Kleinstbestände unter 5 € vorhanden.")
+            return
 
     # --- Konto-/Kategorie-Filter (Einzelauswahl) ---
     categories = sorted({v.position.category for v in all_vals})

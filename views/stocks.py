@@ -11,7 +11,7 @@ from ui import components
 def render():
     components.page_header("Depots", "Aktien", "Positionen, Konten und Import an einem Ort.")
 
-    tab_pos, tab_import, tab_watch = st.tabs(["Positionen", "Flatex-Import", "Watchlist"])
+    tab_pos, tab_watch, tab_import = st.tabs(["Positionen", "Watchlist", "Flatex-Import"])
 
     with tab_pos:
         positions.render_positions_table("stock")
