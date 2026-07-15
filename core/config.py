@@ -35,8 +35,22 @@ load_dotenv(DATA_DIR / ".env")
 load_dotenv(BASE_DIR / ".env")
 load_dotenv(BASE_DIR.parent / ".env")
 
-DB_PATH = DATA_DIR / "portfolio.db"
+REAL_DB_PATH = DATA_DIR / "portfolio.db"
+# Separate DB fürs Herzeigen: fiktives Depot, echte Daten bleiben unberührt.
+DEMO_DB_PATH = DATA_DIR / "portfolio_demo.db"
+# Aktive DB - im Demo-Modus zur Laufzeit über set_demo_mode() umgeschaltet.
+DB_PATH = REAL_DB_PATH
 LEGACY_PORTFOLIO_JSON = BASE_DIR.parent / "portfolio.json"
+
+
+def set_demo_mode(active: bool):
+    """Aktive DB auf die Demo- bzw. echte Datei umschalten.
+
+    Alle DB-Zugriffe lesen config.DB_PATH zur Laufzeit, daher genügt es, dieses
+    Modul-Global umzuschalten (Single-User-Tool). Muss vor db.init_db() laufen.
+    """
+    global DB_PATH
+    DB_PATH = DEMO_DB_PATH if active else REAL_DB_PATH
 
 
 def _meta_or_env(meta_key: str, env_key: str) -> str | None:

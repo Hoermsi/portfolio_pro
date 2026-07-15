@@ -6,8 +6,17 @@ from ui import components
 
 st.set_page_config(page_title="Portfolio Pro", page_icon="💼", layout="wide")
 
+# Demo-Modus VOR init_db: schaltet auf die separate Demo-DB um (echte Daten
+# bleiben unberührt). Default aus bei jedem Start (nicht persistiert).
+demo_mode = st.session_state.setdefault("demo_mode", False)
+config.set_demo_mode(demo_mode)
+
 # DB anlegen + einmalige Migration der V1-Daten
 db.init_db()
+
+if demo_mode:
+    from core import demo
+    demo.ensure_seeded()
 
 # --- Globale Session-Defaults ---
 st.session_state.setdefault("specialist_model", config.DEFAULT_SPECIALIST_MODEL)
@@ -35,6 +44,15 @@ with st.sidebar:
         st.session_state["ui_theme"] = new_theme
         db.set_meta("ui_theme", new_theme)
         st.rerun()
+
+    demo_toggle = st.toggle("Demo-Modus", value=st.session_state["demo_mode"],
+                            help="Zeigt ein fiktives Beispiel-Depot mit echten Live-Kursen. "
+                                 "Deine echten Daten bleiben unberührt.")
+    if demo_toggle != st.session_state["demo_mode"]:
+        st.session_state["demo_mode"] = demo_toggle
+        st.rerun()
+    if st.session_state["demo_mode"]:
+        st.warning("🎭 Demo-Modus aktiv – fiktive Daten")
     st.divider()
     if not config.anthropic_api_key():
         st.warning("KI ist erst nach Eintrag des ANTHROPIC_API_KEY verfügbar.")
