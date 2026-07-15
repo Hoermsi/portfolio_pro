@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 import pandas as pd
+import pytest
 
 from analysis import backtest
 from data import crypto as crypto_data
@@ -139,3 +140,28 @@ def test_crypto_longest_plausible_wins(monkeypatch):
 
     s = backtest._crypto_series_eur("ETH", days=900)
     assert s.index[0].date() <= _ago(800)       # CoinGecko-Reihe (länger)
+
+
+def test_benchmark_curve_rebased_to_invest(monkeypatch):
+    """Die Benchmark-Kurve startet beim investierten Kapital (Rebase am Kaufdatum)."""
+    from analysis import performance
+    from views import backtest as bt_view
+
+    start = _ago(100)
+    # Benchmark: 100 -> 120 Punkte über den Zeitraum
+    idx = pd.date_range(start, periods=101, freq="D")
+    series = pd.Series([100.0 + 0.2 * i for i in range(101)], index=idx)
+    monkeypatch.setattr(performance, "benchmark_series", lambda sym, days: series)
+
+    curve = bt_view._benchmark_curve("^GSPC", start, invest=10000.0)
+    assert curve is not None
+    assert curve.iloc[0] == pytest.approx(10000.0)               # Start = Investiert
+    assert curve.iloc[-1] == pytest.approx(12000.0)              # +20 % wie der Benchmark
+
+
+def test_benchmark_curve_none_without_data(monkeypatch):
+    from analysis import performance
+    from views import backtest as bt_view
+    monkeypatch.setattr(performance, "benchmark_series", lambda sym, days: None)
+    assert bt_view._benchmark_curve("^GSPC", _ago(100), invest=10000.0) is None
+    assert bt_view._benchmark_curve("^GSPC", _ago(100), invest=0.0) is None

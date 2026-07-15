@@ -516,6 +516,55 @@ def delete_meta(key: str):
         con.execute("DELETE FROM meta WHERE key = ?", (key,))
 
 
+# --- BACKUP & RESTORE ---
+
+_SQLITE_HEADER = b"SQLite format 3\x00"
+
+
+def backup_bytes() -> bytes:
+    """Konsistente Kopie der aktiven DB als Bytes (sqlite3-Backup-API).
+
+    Die Backup-API kopiert transaktionssicher - auch wenn parallel geschrieben
+    würde. Für den Download-Button in den Einstellungen.
+    """
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "backup.db"
+        with _connect() as src:
+            dest = sqlite3.connect(target)
+            try:
+                src.backup(dest)
+            finally:
+                dest.close()
+        return target.read_bytes()
+
+
+def restore_from_bytes(data: bytes):
+    """Aktive DB durch ein hochgeladenes Backup ersetzen.
+
+    Validiert den SQLite-Header, legt die bisherige DB als
+    `<name>.bak-<timestamp>` daneben und ersetzt die Datei dann atomar.
+    Wirft ValueError bei ungültigen Daten - die bestehende DB bleibt
+    in dem Fall unangetastet.
+    """
+    import os
+
+    if not data or not data.startswith(_SQLITE_HEADER):
+        raise ValueError("Die Datei ist keine gültige SQLite-Datenbank.")
+
+    db_path = config.DB_PATH
+    if db_path.exists():
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = db_path.with_name(f"{db_path.name}.bak-{stamp}")
+        backup_path.write_bytes(db_path.read_bytes())
+
+    tmp_path = db_path.with_name(db_path.name + ".restore-tmp")
+    tmp_path.write_bytes(data)
+    os.replace(tmp_path, db_path)
+
+
 # --- SCHATTEN-PORTFOLIO (je scope = 'crypto' | 'stock' ein eigenes Experiment) ---
 
 def shadow_positions(scope: str) -> list[dict]:

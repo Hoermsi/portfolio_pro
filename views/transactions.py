@@ -59,7 +59,7 @@ def _render_history():
                      "Symbol": tx["symbol"], "Anlageklasse": "Aktie" if tx["asset_type"] == "stock" else "Krypto",
                      "Konto": tx["category"], "Menge": tx["quantity"], "Preis (€)": tx["price_eur"],
                      "Gebühr (€)": tx["fees_eur"], "Volumen (€)": gross, "Notiz": tx["note"]})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True,
                  column_config={
                      "Preis (€)": st.column_config.NumberColumn(format="%.4f €"),
                      "Gebühr (€)": st.column_config.NumberColumn(format="%.2f €"),

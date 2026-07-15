@@ -24,8 +24,8 @@ def target_allocation() -> dict[str, float]:
 def render():
     components.page_header("Verwaltung", "Einstellungen", "Persönliche Leitplanken für deine lokale App.")
 
-    tab_targets, tab_keys, tab_ai, tab_updates = st.tabs(
-        ["Zielallokation", "API-Keys", "KI & Kosten", "Updates"])
+    tab_targets, tab_keys, tab_ai, tab_data, tab_updates = st.tabs(
+        ["Zielallokation", "API-Keys", "KI & Kosten", "Daten", "Updates"])
     with tab_targets:
         st.markdown("### Strategische Zielallokation")
         st.caption("Die Zielwerte dienen dem Dashboard als Orientierung. Sie lösen keine automatischen Trades aus.")
@@ -54,6 +54,9 @@ def render():
     with tab_ai:
         st.markdown("### KI-Modelle")
         _render_ai_tab()
+
+    with tab_data:
+        _render_data()
 
     with tab_updates:
         _render_updates()
@@ -168,6 +171,43 @@ def _render_ai_tab():
     c1, c2 = st.columns(2)
     c1.metric("KI-Kosten diese Sitzung", f"${st.session_state['session_cost']:.3f}")
     c2.metric("Analysen bisher", f"${db.total_agent_cost():.2f}")
+
+
+def _render_data():
+    """Datensicherung: Backup herunterladen und aus Backup wiederherstellen."""
+    st.markdown("### Datensicherung")
+
+    if config.DB_PATH == config.DEMO_DB_PATH:
+        st.info("Im Demo-Modus ist die Datensicherung deaktiviert - sie betrifft "
+                "nur deine echten Daten.")
+        return
+
+    st.caption("Die Sicherung enthält alle Positionen, Verläufe, Buchungen und "
+               "API-Keys (unverschlüsselt) - bewahre sie entsprechend sicher auf.")
+    st.download_button(
+        "💾 Sicherung herunterladen",
+        data=db.backup_bytes(),
+        file_name=f"portfolio-backup-{date.today().isoformat()}.db",
+        mime="application/octet-stream",
+    )
+
+    st.divider()
+    st.markdown("#### Wiederherstellen")
+    st.caption("Ersetzt deine aktuellen Daten durch die hochgeladene Sicherung. "
+               "Die bisherige Datenbank wird vorher automatisch als .bak-Datei "
+               "im Datenordner aufgehoben.")
+    uploaded = st.file_uploader("Backup-Datei (.db)", type=["db"], key="restore_upload")
+    confirm = st.checkbox("Ich möchte meine aktuellen Daten durch dieses Backup ersetzen.",
+                          key="restore_confirm", disabled=uploaded is None)
+    if st.button("Wiederherstellen", type="primary",
+                 disabled=not (uploaded and confirm), key="restore_btn"):
+        try:
+            db.restore_from_bytes(uploaded.getvalue())
+        except ValueError as e:
+            st.error(str(e))
+            return
+        st.success("Backup wiederhergestellt.")
+        st.rerun()
 
 
 def _render_updates():

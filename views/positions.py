@@ -137,7 +137,7 @@ def render_positions_table(asset_type: str) -> None:
               .format({"Wert (€)": "{:,.2f}", "Einstand (€)": "{:,.2f}",
                        "G/V (€)": "{:+,.2f}", "G/V (%)": "{:+.1f}",
                        "Kurs (€)": "{:,.4f}", "Menge": "{:,.6g}"}, na_rep="—"))
-    st.dataframe(styled, use_container_width=True, hide_index=True,
+    st.dataframe(styled, width="stretch", hide_index=True,
                  column_config={"Anteil (%)": st.column_config.ProgressColumn("Anteil", min_value=0, max_value=100,
                                                                                 format="%.1f %%")})
 
@@ -160,7 +160,7 @@ def render_positions_table(asset_type: str) -> None:
                               format="%.8f", key=f"edit_qty_{asset_type}")
         buy = c2.number_input("Einstandskurs (€/Stück)", value=float(pos.buy_price_eur),
                               min_value=0.0, format="%.4f", key=f"edit_buy_{asset_type}")
-        if c3.button("Änderungen speichern", key=f"edit_save_{asset_type}", use_container_width=True):
+        if c3.button("Änderungen speichern", key=f"edit_save_{asset_type}", width="stretch"):
             db.save_position(pos.symbol, asset_type, qty, buy,
                              category=pos.category, source=pos.source)
             st.rerun()
@@ -193,7 +193,7 @@ def _render_history_chart(asset_type: str) -> None:
     fig.update_traces(line_color="#23c55e")
     fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
                       xaxis_title=None)
-    st.plotly_chart(fig, use_container_width=True, key=f"history_{asset_type}")
+    st.plotly_chart(fig, width="stretch", key=f"history_{asset_type}")
     if quelle == "rekonstruiert":
         st.caption("Echter Verlauf aus deiner Kraken-Historie (tatsächliche Mengen × "
                    "historische Kurse; nur Kraken-Bestände).")
@@ -237,7 +237,7 @@ def _render_category_overview(vals) -> None:
               .map(_gv_style, subset=["G/V (€)", "G/V (%)"])
               .format({"Wert (€)": "{:,.2f}", "G/V (€)": "{:+,.2f}",
                        "G/V (%)": "{:+.1f}"}, na_rep="—"))
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
 
 
 def _resolve_watchlist_name(symbol: str, asset_type: str) -> str:
@@ -265,7 +265,7 @@ def render_watchlist(asset_type: str) -> None:
         symbol = c1.text_input("Symbol", help=help_txt,
                                label_visibility="collapsed",
                                placeholder="Symbol zur Watchlist hinzufügen …").strip().upper()
-        add = c2.form_submit_button("➕ Hinzufügen", use_container_width=True)
+        add = c2.form_submit_button("➕ Hinzufügen", width="stretch")
     if add and symbol:
         resolvable = (crypto_data.resolve_id(symbol) is not None if asset_type == "crypto"
                       else stock_data.resolves(symbol))
@@ -281,35 +281,35 @@ def render_watchlist(asset_type: str) -> None:
         st.info("Noch keine Favoriten. Füge oben ein Symbol hinzu.")
         return
 
-    # --- Kennzahlen-Tabelle ---
-    metrics_by_id: dict[int, dict] = {}
-    rows = []
+    # --- Kennzahlen-Tabelle (parallel geholt) ---
     with st.spinner("Lade Kurse …"):
-        for e in entries:
-            m = alerts.asset_metrics(e["symbol"], e["asset_type"])
-            metrics_by_id[e["id"]] = m
-            schwellen = []
-            if e["target_above"] is not None:
-                schwellen.append(f"↑{e['target_above']:,.2f}")
-            if e["target_below"] is not None:
-                schwellen.append(f"↓{e['target_below']:,.2f}")
-            if e["day_move_pct"] is not None:
-                schwellen.append(f"±{e['day_move_pct']:.1f}%")
-            if e["rsi_alert"]:
-                schwellen.append("RSI")
-            rows.append({
-                "Symbol": e["symbol"],
-                "Name": e["name"] or "",
-                "Kurs (€)": round(m["price_eur"], 4) if m["price_eur"] is not None else None,
-                "Tag (%)": round(m["day_pct"], 2) if m["day_pct"] is not None else None,
-                "RSI": round(m["rsi"], 0) if m["rsi"] is not None else None,
-                "Alarme": " · ".join(schwellen) if schwellen else "—",
-            })
+        metrics_by_id = alerts.metrics_for(entries)
+
+    rows = []
+    for e in entries:
+        m = metrics_by_id.get(e["id"], {})
+        schwellen = []
+        if e["target_above"] is not None:
+            schwellen.append(f"↑{e['target_above']:,.2f}")
+        if e["target_below"] is not None:
+            schwellen.append(f"↓{e['target_below']:,.2f}")
+        if e["day_move_pct"] is not None:
+            schwellen.append(f"±{e['day_move_pct']:.1f}%")
+        if e["rsi_alert"]:
+            schwellen.append("RSI")
+        rows.append({
+            "Symbol": e["symbol"],
+            "Name": e["name"] or "",
+            "Kurs (€)": round(m["price_eur"], 4) if m.get("price_eur") is not None else None,
+            "Tag (%)": round(m["day_pct"], 2) if m.get("day_pct") is not None else None,
+            "RSI": round(m["rsi"], 0) if m.get("rsi") is not None else None,
+            "Alarme": " · ".join(schwellen) if schwellen else "—",
+        })
     df = pd.DataFrame(rows)
     styled = (df.style
               .map(_gv_style, subset=["Tag (%)"])
               .format({"Kurs (€)": "{:,.4f}", "Tag (%)": "{:+.2f}", "RSI": "{:.0f}"}, na_rep="—"))
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
 
     # --- Alarme konfigurieren / entfernen ---
     with st.expander("Alarme bearbeiten oder Favorit entfernen"):
@@ -333,7 +333,7 @@ def render_watchlist(asset_type: str) -> None:
         rsi_on = c4.checkbox("RSI-Alarm (>70 / <30)", value=bool(e["rsi_alert"]),
                              key=f"watch_rsi_{asset_type}")
         b1, b2 = st.columns(2)
-        if b1.button("Alarme speichern", key=f"watch_save_{asset_type}", use_container_width=True):
+        if b1.button("Alarme speichern", key=f"watch_save_{asset_type}", width="stretch"):
             db.update_watchlist_alert(
                 e["id"],
                 above if above > 0 else None,
@@ -342,7 +342,7 @@ def render_watchlist(asset_type: str) -> None:
                 rsi_on,
             )
             st.rerun()
-        if b2.button("🗑️ Favorit entfernen", key=f"watch_del_{asset_type}", use_container_width=True):
+        if b2.button("🗑️ Favorit entfernen", key=f"watch_del_{asset_type}", width="stretch"):
             db.remove_watchlist(e["id"])
             st.rerun()
 

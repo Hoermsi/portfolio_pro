@@ -23,10 +23,10 @@ def _render_positions_tab():
     c1, c2, c3 = st.columns([1, 1, 1], vertical_alignment="center")
     with c1:
         sync_clicked = st.button("🔄 Kraken synchronisieren",
-                                 disabled=disabled, use_container_width=True)
+                                 disabled=disabled, width="stretch")
     with c2:
         reconstruct_clicked = st.button("📈 Wertverlauf aus Kraken-Historie",
-                                        disabled=disabled, use_container_width=True,
+                                        disabled=disabled, width="stretch",
                                         help="Rekonstruiert den echten historischen Wert deines "
                                              "Krypto-Depots aus der kompletten Kraken-Ledger-Historie "
                                              "(tatsächliche Mengen pro Tag × historische Kurse). "

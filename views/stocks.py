@@ -58,11 +58,11 @@ def _render_account_upload(titel: str, category: str, key: str):
             with st.expander("Importvorschau öffnen"):
                 st.dataframe(pd.DataFrame(rows).rename(columns={"symbol": "Symbol", "quantity": "Menge",
                                                                 "buy_price": "Einstand (€)", "name": "Name"}),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
         else:
             st.error("; ".join(errors))
     if file and preview is not None and st.button("Konto synchronisieren", key=f"sync_{key}",
-                                                   use_container_width=True):
+                                                   width="stretch"):
         ok, count, unresolved = flatex.import_csv(file, category=category, replace=True)
         if ok:
             st.success(f"{count} Positionen in *{category}* importiert (Bestand ersetzt).")

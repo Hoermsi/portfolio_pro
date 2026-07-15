@@ -71,6 +71,9 @@ with st.sidebar:
     except Exception:
         pass
 
+    from core.version import APP_VERSION
+    st.caption(f"Portfolio Pro v{APP_VERSION}")
+
 # --- Navigation ---
 from views import ai_desk, ai_portfolio, asset_detail, backtest, cash, crypto, dashboard, exports, settings, stocks, transactions  # noqa: E402
 

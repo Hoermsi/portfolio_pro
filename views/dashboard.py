@@ -66,7 +66,7 @@ def _render_rebalancing(rows: list[dict], total: float):
             hints.append(f"{row['Name']} {direction} ({deviation:+.1f} %-Pkt. / {adjust_eur:+,.0f} €)")
     st.markdown("#### Zielallokation")
     st.dataframe(
-        pd.DataFrame(table), hide_index=True, use_container_width=True,
+        pd.DataFrame(table), hide_index=True, width="stretch",
         column_config={
             "Ist": st.column_config.ProgressColumn("Ist (%)", min_value=0, max_value=100, format="%.1f %%"),
             "Ziel": st.column_config.NumberColumn("Ziel (%)", format="%.1f %%"),
@@ -224,7 +224,7 @@ def _render_top_positions(vals: list, total: float):
                      "Wert": round(v.value_eur or 0, 2),
                      "Anteil": round((v.value_eur or 0) / total * 100, 1) if total else 0,
                      "G/V": round(v.gain_pct, 1) if v.has_cost else None})
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True,
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
                  column_config={
                      "Wert": st.column_config.NumberColumn("Wert (€)", format="%.2f €"),
                      "Anteil": st.column_config.ProgressColumn("Anteil", min_value=0, max_value=100, format="%.1f %%"),
@@ -254,7 +254,8 @@ def _render_attention(vals: list, total: float, rows: list[dict]):
 
 
 def _render_alerts():
-    """Ausgelöste Kursalarme der Watchlist-Favoriten. Ohne Treffer unsichtbar."""
+    """Ausgelöste, noch nicht quittierte Kursalarme der Watchlist-Favoriten.
+    'Gesehen' unterdrückt einen Alarm, bis Art/Schwelle geändert werden."""
     triggered = alerts.evaluate_watchlist()
     if not triggered:
         return
@@ -263,8 +264,12 @@ def _render_alerts():
     for item in triggered:
         label = item["name"] or item["symbol"]
         typ = "Krypto" if item["asset_type"] == "crypto" else "Aktie"
-        for msg in item["triggers"]:
-            st.warning(f"**{label}** ({item['symbol']}, {typ}): {msg}")
+        for t in item["triggers"]:
+            c1, c2 = st.columns([5, 1], vertical_alignment="center")
+            c1.warning(f"**{label}** ({item['symbol']}, {typ}): {t['text']}")
+            c2.button("✓ Gesehen", key=f"ack_{item['id']}_{t['kind']}_{t['threshold']}",
+                      on_click=alerts.acknowledge, args=(item["id"], [t]),
+                      help="Diesen Alarm ausblenden, bis sich die Schwelle ändert.")
     st.divider()
 
 

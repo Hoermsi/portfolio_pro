@@ -58,7 +58,7 @@ def _render_balance():
     btn_cols = st.columns(len(_QUICK_STEPS))
     for col, step in zip(btn_cols, _QUICK_STEPS):
         label = f"{step:+,} €".replace(",", ".")
-        col.button(label, key=f"cash_step_{step}", use_container_width=True,
+        col.button(label, key=f"cash_step_{step}", width="stretch",
                    on_click=_adjust_amount, args=(float(step),))
 
     if st.button("💾 Stand aktualisieren", type="primary"):
@@ -80,14 +80,14 @@ def _render_balance():
                   labels={"balance_eur": "Kontostand (€)"})
     fig.update_traces(line_color="#23c55e")
     fig.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0))
-    st.plotly_chart(fig, use_container_width=True, key="cash_history_chart")
+    st.plotly_chart(fig, width="stretch", key="cash_history_chart")
 
     with st.expander(f"🗂️ Alle Einträge ({len(entries)})"):
         table = pd.DataFrame({
             "Zeitpunkt": [e["created_at"][:16].replace("T", " ") for e in reversed(entries)],
             "Kontostand (€)": [round(e["balance_eur"], 2) for e in reversed(entries)],
         })
-        st.dataframe(table, use_container_width=True, hide_index=True)
+        st.dataframe(table, width="stretch", hide_index=True)
         if st.button("↩️ Letzten Eintrag löschen (Fehleingabe)"):
             db.delete_last_cash_entry()
             st.rerun()
@@ -120,7 +120,7 @@ def _render_cashflows():
         "Betrag (€)": [round(f["amount_eur"], 2) for f in flows],
         "Notiz": [f["note"] for f in flows],
     })
-    st.dataframe(table, hide_index=True, use_container_width=True,
+    st.dataframe(table, hide_index=True, width="stretch",
                  column_config={"Betrag (€)": st.column_config.NumberColumn(format="%+.2f €")})
     with st.expander("Buchung löschen"):
         options = {f"{f['flow_date']} · {f['amount_eur']:+,.2f} € · {f['note'] or 'ohne Notiz'}": f["id"]

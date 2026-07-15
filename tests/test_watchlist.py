@@ -43,10 +43,45 @@ def test_evaluate_watchlist_triggers(tmp_db, monkeypatch):
                         lambda s, t: {"price_eur": 190.0, "day_pct": 4.5, "rsi": 75.0})
     result = alerts.evaluate_watchlist()
     assert len(result) == 1
-    triggers = result[0]["triggers"]
-    assert any("über Zielkurs" in x for x in triggers)
-    assert any("Tagesbewegung" in x for x in triggers)
-    assert any("überkauft" in x for x in triggers)
+    kinds = {t["kind"] for t in result[0]["triggers"]}
+    assert kinds == {"above", "move", "rsi"}
+    texts = [t["text"] for t in result[0]["triggers"]]
+    assert any("über Zielkurs" in x for x in texts)
+    assert any("überkauft" in x for x in texts)
+
+
+def test_metrics_for_parallel(tmp_db, monkeypatch):
+    """metrics_for holt Kennzahlen für alle Einträge und mappt sie auf die id."""
+    db = tmp_db
+    id1 = db.add_watchlist("NVDA", "stock")
+    id2 = db.add_watchlist("BTC", "crypto")
+    monkeypatch.setattr(alerts, "asset_metrics",
+                        lambda s, t: {"price_eur": 42.0 if s == "NVDA" else 99.0,
+                                      "day_pct": None, "rsi": None})
+    m = alerts.metrics_for(db.list_watchlist())
+    assert m[id1]["price_eur"] == 42.0
+    assert m[id2]["price_eur"] == 99.0
+
+
+def test_acknowledge_hides_until_threshold_changes(tmp_db, monkeypatch):
+    """'Gesehen' unterdrückt den Alarm; eine neue Schwelle lässt ihn wieder feuern."""
+    db = tmp_db
+    wid = db.add_watchlist("NVDA", "stock")
+    db.update_watchlist_alert(wid, target_above=180.0, target_below=None,
+                              day_move_pct=None, rsi_alert=False)
+    monkeypatch.setattr(alerts, "asset_metrics",
+                        lambda s, t: {"price_eur": 190.0, "day_pct": None, "rsi": None})
+
+    result = alerts.evaluate_watchlist()
+    assert len(result) == 1
+    alerts.acknowledge(wid, result[0]["triggers"])
+    assert alerts.evaluate_watchlist() == []            # quittiert -> weg
+
+    db.update_watchlist_alert(wid, target_above=185.0, target_below=None,
+                              day_move_pct=None, rsi_alert=False)
+    refired = alerts.evaluate_watchlist()               # neue Schwelle -> wieder da
+    assert len(refired) == 1
+    assert refired[0]["triggers"][0]["threshold"] == 185.0
 
 
 def test_evaluate_watchlist_no_trigger(tmp_db, monkeypatch):

@@ -108,7 +108,7 @@ def _render_dashboard(scope: str):
     with col_run:
         run_clicked = st.button("🧠 Neue KI-Anweisungen einholen", type="primary",
                                 disabled=not config.anthropic_api_key(),
-                                use_container_width=True, key=f"run_{scope}")
+                                width="stretch", key=f"run_{scope}")
     with col_info:
         st.caption(f"Der **Portfolio-Stratege** ({config.model_label(strat_model)}) analysiert "
                    f"das {name}-Depot, die Marktlage und seine bisherigen Calls und handelt "
@@ -195,7 +195,7 @@ def _render_shadow_positions(scope: str, vals: list[dict], total: float):
             "Anteil (%)": round(weight, 1),
             "Status": v["error"] or "OK",
         })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     items = [{"Symbol": v["symbol"], "Wert": v["value_eur"]}
              for v in vals if v["value_eur"]]
     components.render_allocation_pie(items, "Symbol", "Wert", "Verteilung",
@@ -245,7 +245,7 @@ def _render_recommendation_history(scope: str):
                 "Seither": perf,
                 "Begründung": (r["begruendung"] or "")[:80],
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _render_reset(scope: str):
