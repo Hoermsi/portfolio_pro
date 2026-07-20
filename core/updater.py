@@ -155,8 +155,14 @@ if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto waitloop
 )
-rem Code spiegeln (Nutzerdaten liegen getrennt und werden nicht angefasst)
-robocopy "{source_dir}" "{install_dir}" /MIR /XD .git __pycache__ .pytest_cache >NUL
+rem Code spiegeln (Nutzerdaten liegen getrennt und werden nicht angefasst).
+rem /IS erzwingt das Kopieren auch bei aus Robocopy-Sicht "gleichen" Dateien
+rem (gleiche Groesse + gleicher Zeitstempel) - ohne dieses Flag ueberspringt
+rem Robocopy z.B. core/version.py, wenn die alte und neue Versionsnummer
+rem gleich lang sind und die im Release-ZIP gespeicherten Zeitstempel nicht
+rem neuer als die installierten Dateien sind (reproduziert: Update von 1.3.0
+rem auf 1.3.1 aktualisierte fast alles, liess core/version.py aber unveraendert).
+robocopy "{source_dir}" "{install_dir}" /MIR /IS /IT /XD .git __pycache__ .pytest_cache >NUL
 rem Neue/geänderte Abhängigkeiten in die gebündelte Laufzeit nachinstallieren
 if exist "{runtime_py}" if exist "{requirements}" "{runtime_py}" -m pip install -r "{requirements}" >NUL 2>&1
 {relaunch_line}

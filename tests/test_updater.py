@@ -87,5 +87,21 @@ def test_swap_script_contains_pip_install(tmp_path, monkeypatch):
     path = updater._write_swap_script(src, install, None)
     content = path.read_text(encoding="utf-8")
     assert "pip install -r" in content
+
+
+def test_swap_script_robocopy_forces_same_files(tmp_path, monkeypatch):
+    """Robocopy muss /IS (+ /IT) nutzen - ohne die Flags ueberspringt Robocopy
+    Dateien mit gleicher Groesse+Zeitstempel (z.B. core/version.py, wenn alte
+    und neue Versionsnummer gleich lang sind), obwohl sich der Inhalt aendert."""
+    from core import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    install = tmp_path / "app"
+    install.mkdir()
+    path = updater._write_swap_script(src, install, None)
+    content = path.read_text(encoding="utf-8")
+    assert " /IS" in content
+    assert "robocopy" in content.lower()
     assert "requirements.txt" in content
     assert "runtime" in content
