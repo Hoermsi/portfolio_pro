@@ -84,3 +84,32 @@ def save_risk_profile(risk: int, target_return_pct: float, retirement_year: int 
         "retirement_year": int(retirement_year) if retirement_year else None,
         "monthly_contribution": max(0.0, float(monthly_contribution)),
     }))
+
+
+_DEFAULT_EMERGENCY_FUND = 0.0
+_EMERGENCY_FUND_MAX = 100_000.0
+
+
+def emergency_fund_eur() -> float:
+    """Gespeicherter Notgroschen (Mindest-Cash-Reserve) in EUR, 0 = deaktiviert."""
+    raw = db.get_meta("emergency_fund")
+    try:
+        value = float(json.loads(raw)) if raw else _DEFAULT_EMERGENCY_FUND
+    except (json.JSONDecodeError, TypeError, ValueError):
+        value = _DEFAULT_EMERGENCY_FUND
+    return min(_EMERGENCY_FUND_MAX, max(0.0, value))
+
+
+def save_emergency_fund_eur(value: float):
+    """Notgroschen persistieren, geklammert auf [0, 100000]."""
+    clamped = min(_EMERGENCY_FUND_MAX, max(0.0, float(value)))
+    db.set_meta("emergency_fund", json.dumps(clamped))
+
+
+def emergency_fund_progress_pct(cash_balance: float | None) -> float | None:
+    """Füllstand des Notgroschens in % - None, wenn kein Notgroschen aktiv ist
+    oder kein Kontostand vorliegt. Nicht auf 100 gekappt (Übererfüllung sichtbar)."""
+    fund = emergency_fund_eur()
+    if fund <= 0 or cash_balance is None:
+        return None
+    return max(0.0, float(cash_balance)) / fund * 100.0

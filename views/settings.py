@@ -7,8 +7,8 @@ import streamlit as st
 from core import config, db
 # target_allocation liegt jetzt in core.profile (auch für agents/* nutzbar);
 # hier re-exportiert, damit bestehende Aufrufer (dashboard, report) weiterlaufen.
-from core.profile import (max_target_return, risk_profile, save_risk_profile,
-                          target_allocation)
+from core.profile import (emergency_fund_eur, max_target_return, risk_profile,
+                          save_emergency_fund_eur, save_risk_profile, target_allocation)
 from ui import components
 
 
@@ -35,6 +35,9 @@ def render():
             else:
                 db.set_meta("target_allocation", json.dumps({"stock": stock, "crypto": crypto, "cash": cash}))
                 st.success("Zielallokation gespeichert.")
+
+        st.divider()
+        _render_emergency_fund()
 
         st.divider()
         _render_risk_profile()
@@ -98,6 +101,20 @@ def _api_key_row(label: str, meta_key: str, env_key: str, help_text: str | None)
     msg = st.session_state.pop(f"_apikey_msg_{meta_key}", None)
     if msg:
         st.success(msg)
+
+
+def _render_emergency_fund():
+    """Notgroschen (Mindest-Cash-Reserve) - rein informativ, keine automatischen Aktionen."""
+    st.markdown("### 🛟 Notgroschen (Mindest-Cash-Reserve)")
+    st.caption("Rein informativ - keine automatischen Aktionen. Der Füllstand wird "
+               "auf der Cash-Seite angezeigt.")
+    current = emergency_fund_eur()
+    value = st.slider("Notgroschen (€)", 0, 100_000, int(current), step=500,
+                      key="settings_emergency_fund")
+    st.caption(f"{value:,.0f} €".replace(",", "."))
+    if st.button("Notgroschen speichern", key="save_emergency_fund"):
+        save_emergency_fund_eur(value)
+        st.success("Notgroschen gespeichert.")
 
 
 def _render_risk_profile():

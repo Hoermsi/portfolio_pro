@@ -4,6 +4,7 @@ import plotly.express as px
 import streamlit as st
 
 from core import db
+from core.profile import emergency_fund_eur, emergency_fund_progress_pct
 from ui import components
 
 _QUICK_STEPS = (-1000, -500, -100, -10, 10, 100, 500, 1000)
@@ -32,13 +33,20 @@ def _render_balance():
     previous = entries[-2]["balance_eur"] if len(entries) >= 2 else None
 
     # --- Aktueller Stand ---
-    col_metric, col_info = st.columns([1, 2])
+    fund = emergency_fund_eur()
+    cols = st.columns([1, 1, 2]) if fund > 0 else st.columns([1, 2])
+    col_metric, col_info = cols[0], cols[-1]
     with col_metric:
         if latest is not None:
             delta = f"{latest - previous:+,.2f} €" if previous is not None else None
             st.metric("Aktueller Kontostand", f"{latest:,.2f} €", delta)
         else:
             st.metric("Aktueller Kontostand", "—")
+    if fund > 0:
+        with cols[1]:
+            pct = emergency_fund_progress_pct(latest)
+            st.metric("Notgroschen gefüllt", f"{pct:.0f} %" if pct is not None else "—",
+                     f"Ziel: {fund:,.0f} €")
     with col_info:
         if entries:
             st.caption(f"Zuletzt aktualisiert: "

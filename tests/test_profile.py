@@ -69,3 +69,35 @@ def test_target_allocation_reexport_matches(tmp_db):
     from core.profile import target_allocation as core_ta
     from views.settings import target_allocation as view_ta
     assert view_ta is core_ta
+
+
+def test_emergency_fund_default_and_roundtrip(tmp_db):
+    from core.profile import emergency_fund_eur, save_emergency_fund_eur
+    assert emergency_fund_eur() == 0.0
+    save_emergency_fund_eur(5000.0)
+    assert emergency_fund_eur() == 5000.0
+
+
+def test_emergency_fund_clamped(tmp_db):
+    from core.profile import emergency_fund_eur, save_emergency_fund_eur
+    save_emergency_fund_eur(-500.0)
+    assert emergency_fund_eur() == 0.0
+    save_emergency_fund_eur(999_999.0)
+    assert emergency_fund_eur() == 100_000.0
+
+
+def test_emergency_fund_broken_json_falls_back(tmp_db):
+    from core.profile import emergency_fund_eur
+    tmp_db.set_meta("emergency_fund", "{kaputt")
+    assert emergency_fund_eur() == 0.0
+
+
+def test_emergency_fund_progress_pct(tmp_db):
+    from core.profile import emergency_fund_progress_pct, save_emergency_fund_eur
+    # Feature deaktiviert (0) -> immer None
+    assert emergency_fund_progress_pct(3000.0) is None
+    save_emergency_fund_eur(6000.0)
+    assert emergency_fund_progress_pct(None) is None
+    assert emergency_fund_progress_pct(3000.0) == pytest.approx(50.0)
+    # Uebererfuellung bleibt sichtbar (nicht gekappt)
+    assert emergency_fund_progress_pct(8000.0) == pytest.approx(133.333, rel=1e-3)
