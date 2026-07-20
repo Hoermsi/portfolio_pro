@@ -5,7 +5,7 @@ import streamlit as st
 
 from analysis import alerts, performance
 from core import db
-from core.portfolio import total_value, valued_positions
+from core.portfolio import all_priceable, total_value, valued_positions
 from data import crypto as crypto_data
 from data import stocks as stock_data
 from ui import components
@@ -65,8 +65,11 @@ def render_positions_table(asset_type: str) -> None:
 
     # Tages-Snapshot des vollen Asset-Typs festhalten -> Verlauf wächst auch beim
     # Öffnen dieser Seite (idempotent pro Tag, ungefilterter Gesamtwert - auch
-    # Kleinstbestände zählen zum echten Vermögen).
-    db.save_snapshot(asset_type, total_value(all_vals))
+    # Kleinstbestände zählen zum echten Vermögen). Bei Kursausfall einzelner
+    # Positionen wird der Snapshot übersprungen statt einen Fake-Einbruch
+    # festzuschreiben (fehlender Kurs zählt in total_value() sonst als 0).
+    if all_priceable(all_vals):
+        db.save_snapshot(asset_type, total_value(all_vals))
 
     # Krypto-"Staubreste" (< 5 €) blenden wir in der Ansicht aus - erschwerbar
     # durch Rundungs-/Transfer-Reste, aber irrelevant für die Übersicht.

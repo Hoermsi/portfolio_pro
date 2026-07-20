@@ -3,6 +3,24 @@ import pytest
 from core import shadow
 
 
+def test_price_eur_stock_no_fx_returns_none(tmp_db, monkeypatch):
+    """Ein nicht ermittelbarer Wechselkurs darf im KI-Depot nicht als 1.0
+    angenommen werden - eine 185-USD-Aktie sonst als 185 EUR bewertet/gehandelt."""
+    from data import fx as fx_data
+    from data import stocks as stock_data
+    monkeypatch.setattr(stock_data, "get_quote", lambda s: {"price": 185.0, "currency": "USD"})
+    monkeypatch.setattr(fx_data, "get_fx_to_eur", lambda c: None)
+    assert shadow.price_eur("AAPL", "stock") is None
+
+
+def test_price_eur_stock_with_fx(tmp_db, monkeypatch):
+    from data import fx as fx_data
+    from data import stocks as stock_data
+    monkeypatch.setattr(stock_data, "get_quote", lambda s: {"price": 200.0, "currency": "USD"})
+    monkeypatch.setattr(fx_data, "get_fx_to_eur", lambda c: 0.9)
+    assert shadow.price_eur("AAPL", "stock") == 180.0
+
+
 @pytest.fixture
 def shadow_db(tmp_db, monkeypatch):
     """tmp_db + feste Kurse, damit Trades deterministisch sind."""

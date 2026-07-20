@@ -6,7 +6,7 @@ from analysis import risk as risk_analysis
 from analysis import technical
 from core import db
 from core.portfolio import portfolio_summary, value_position
-from core.profile import risk_profile, target_allocation
+from core.profile import emergency_fund_eur, risk_profile, target_allocation
 from data import crypto as crypto_data
 from data import news as news_data
 from data import stocks as stock_data
@@ -101,9 +101,16 @@ def cash_allocation_prompt() -> str:
             lines.append(f"- {namen[key]}: ist {ist[key]:.1f}% / ziel {ziel:.1f}% "
                          f"-> {delta_eur:+,.0f} EUR")
         ziel_cash = targets["cash"] / 100 * total
-        frei = max(0.0, cash - ziel_cash)
+        notgroschen = emergency_fund_eur()
+        reserve = max(ziel_cash, notgroschen)
+        frei = max(0.0, cash - reserve)
+        if notgroschen > ziel_cash:
+            lines.append(f"NOTGROSCHEN (Mindest-Cash-Reserve des Nutzers): {notgroschen:,.2f} EUR "
+                         "- diese Reserve darf NICHT angetastet werden, auch wenn die "
+                         "Ziel-Cash-Quote niedriger liegt.")
         lines.append(f"FREI INVESTIERBARES CASH: {frei:,.2f} EUR "
-                     f"(Bankguthaben minus Ziel-Cash-Reserve von {ziel_cash:,.0f} EUR).")
+                     f"(Bankguthaben minus Reserve von {reserve:,.0f} EUR - "
+                     "das Maximum aus Ziel-Cash-Quote und Notgroschen).")
         if frei > 0:
             lines.append("Wenn frei investierbares Cash vorhanden ist, mache KONKRETE "
                          "Vorschlaege mit EUR-Betrag und Symbol (z.B. '500 EUR in einen "

@@ -14,7 +14,7 @@ from datetime import date
 
 import pandas as pd
 
-from core import db
+from core import db, shadow
 from data import crypto as crypto_data
 from data import fx as fx_data
 from data import stocks as stock_data
@@ -128,7 +128,13 @@ def _series_eur(symbol: str, asset_type: str, days: int) -> pd.Series | None:
 
 def _build_curve(series_map: dict[str, tuple[float, pd.Series]],
                  start_ts: pd.Timestamp) -> pd.Series | None:
-    """Gesamter Depotwert je Tag ab start_ts (Σ menge × Kurs), Reihen zusammengeführt."""
+    """Gesamter Depotwert je Tag ab start_ts (Σ menge × Kurs), Reihen zusammengeführt.
+
+    `bfill()` nach dem `ffill()`: handelt eine Position erst später zum ersten
+    Mal (z.B. Aktien fehlen am Wochenende, während Krypto schon Kurse hat),
+    bliebe ihre Spalte am Anfang sonst NaN -> zählt in der Summe als 0 und die
+    Kurve startet künstlich zu tief, statt beim tatsächlich investierten Betrag.
+    """
     parts = []
     for symbol, (qty, s) in series_map.items():
         s2 = s[s.index >= start_ts]
@@ -137,7 +143,7 @@ def _build_curve(series_map: dict[str, tuple[float, pd.Series]],
         parts.append((qty * s2).rename(symbol))
     if not parts:
         return None
-    combined = pd.concat(parts, axis=1).sort_index().ffill()
+    combined = pd.concat(parts, axis=1).sort_index().ffill().bfill()
     return combined.sum(axis=1)
 
 
@@ -166,7 +172,11 @@ def run_backtest(scope: str, start_date: date) -> dict:
                 skipped.append(symbol)
                 continue
             price_x = float(price_x)
-            price_now = float(s.iloc[-1])
+            # Echter Live-Kurs statt letzter Punkt der historischen Reihe (die
+            # ggf. das USD-Paar x FX oder ein älterer CoinGecko-Wert ist) -
+            # damit "Wert heute" mit dem Dashboard/den echten Positionen übereinstimmt.
+            live = shadow.price_eur(symbol, at)
+            price_now = live if live is not None else float(s.iloc[-1])
             invest = qty * price_x
             value = qty * price_now
             rows.append({

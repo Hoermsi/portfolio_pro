@@ -105,7 +105,12 @@ def price_eur(symbol: str, asset_type: str) -> float | None:
     if not quote:
         return None
     fx = fx_data.get_fx_to_eur(quote.get("currency", "EUR"))
-    return quote.get("price") * (fx if fx else 1.0)
+    # Kein Fallback auf 1.0: ein nicht ermittelbarer Wechselkurs würde eine
+    # z.B. 185-USD-Aktie sonst als 185 € bewerten/handeln (~14% zu hoch) -
+    # lieber "kein Kurs" als eine stillschweigend falsche Bewertung.
+    if fx is None:
+        return None
+    return quote.get("price") * fx
 
 
 def valued_shadow(scope: str) -> list[dict]:

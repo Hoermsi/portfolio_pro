@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from analysis import backtest
+from core import shadow
 from data import crypto as crypto_data
 from data import fx as fx_data
 from data import stocks as stock_data
@@ -29,6 +30,8 @@ def test_backtest_aggregates_quantities(tmp_db, monkeypatch):
     start = date.today() - timedelta(days=100)
     monkeypatch.setattr(backtest, "_series_eur",
                         lambda sym, at, days: _series(50.0, 80.0, start))
+    # Kein Live-Kurs verfügbar -> Fallback auf den letzten Punkt der Reihe (80.0)
+    monkeypatch.setattr(shadow, "price_eur", lambda sym, at: None)
 
     res = backtest.run_backtest("stock", start)
     assert len(res["rows"]) == 1
@@ -39,6 +42,38 @@ def test_backtest_aggregates_quantities(tmp_db, monkeypatch):
     assert round(row["Rendite (%)"], 1) == 60.0
     assert round(res["total_return_pct"], 1) == 60.0
     assert res["curve"] is not None
+
+
+def test_build_curve_backfills_leading_gaps():
+    """Startet eine Reihe (z.B. Aktien am Wochenende ohne Kurs) erst später als
+    eine andere, darf die Kurve zu Beginn nicht künstlich zu tief liegen -
+    bfill() muss die führende Lücke mit dem ersten echten Kurswert auffüllen."""
+    start = pd.Timestamp("2026-01-01")
+    idx_full = pd.date_range(start, periods=5, freq="D")
+    idx_late = pd.date_range(start + pd.Timedelta(days=2), periods=3, freq="D")
+    series_map = {
+        "CRYPTO": (1.0, pd.Series([10.0] * 5, index=idx_full)),
+        "STOCK": (1.0, pd.Series([100.0] * 3, index=idx_late)),  # erst ab Tag 3
+    }
+    curve = backtest._build_curve(series_map, start)
+    # Ohne bfill wären die ersten beiden Tage nur 10.0 (STOCK zählt als 0).
+    assert curve.iloc[0] == 110.0
+    assert curve.iloc[-1] == 110.0
+
+
+def test_backtest_prefers_live_price(tmp_db, monkeypatch):
+    """'Wert heute' nutzt den echten Live-Kurs, nicht den letzten Reihenpunkt -
+    damit stimmt der Backtest mit dem Dashboard/den echten Positionen überein."""
+    db = tmp_db
+    db.save_position("NVDA", "stock", 2.0, 100.0, category="A")
+    start = date.today() - timedelta(days=100)
+    monkeypatch.setattr(backtest, "_series_eur",
+                        lambda sym, at, days: _series(50.0, 80.0, start))
+    monkeypatch.setattr(shadow, "price_eur", lambda sym, at: 95.0)  # abweichender Live-Kurs
+
+    res = backtest.run_backtest("stock", start)
+    assert res["rows"][0]["Kurs heute (€)"] == 95.0
+    assert res["rows"][0]["Wert heute (€)"] == 2 * 95.0
 
 
 def test_backtest_skips_without_price(tmp_db, monkeypatch):

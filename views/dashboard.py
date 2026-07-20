@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from analysis import alerts, performance
-from core.portfolio import total_value, valued_positions
+from core.portfolio import all_priceable, total_value, valued_positions
 from core.profile import risk_profile, target_allocation
 from ui import components
 
@@ -150,6 +150,35 @@ def _render_projection(history: pd.DataFrame):
                     key="dashboard_proj_chart")
 
 
+def _portfolio_pct_series(history: pd.DataFrame,
+                          overlay: str) -> tuple[pd.Timestamp | None, pd.Series | None, bool]:
+    """Prozentuale Entwicklung ab dem ersten Datenpunkt.
+
+    Für 'Gesamt' wird der kapitalflussbereinigte Index verwendet
+    (performance.performance_index) - sonst sähen Einzahlungen/Sparraten wie
+    Kursgewinne aus und der Vergleich mit dem Benchmark wäre geschönt. Für
+    Aktien/Krypto separat ist das nicht möglich (Kapitalbewegungen sind nicht
+    nach Anlageklasse aufgeteilt erfasst) - dort bleibt es die rohe Wertreihe.
+    Rückgabe: (anchor, pct_series, bereinigt)."""
+    if overlay == "Gesamt":
+        port = history["Gesamt"].dropna()
+        if port.empty or float(port.iloc[-1]) <= 0:
+            return None, None, False
+        anchor = port.index[0]
+        idx_df = performance.performance_index(history)
+        if idx_df is not None and not idx_df.empty:
+            pct = pd.concat([pd.Series([0.0], index=[anchor]), idx_df["Index"] - 100.0])
+            return anchor, pct, True
+        return anchor, performance.pct_from_anchor(port, anchor), False
+
+    port = history[overlay].dropna()
+    port = port[port > 0]
+    if port.empty or float(port.iloc[-1]) <= 0:
+        return None, None, False
+    anchor = port.index[0]
+    return anchor, performance.pct_from_anchor(port, anchor), False
+
+
 def _render_comparison(history: pd.DataFrame):
     """Benchmark und Portfolio-Overlay prozentual ab dem ersten Portfolio-Datenpunkt."""
     c1, c2, c3 = st.columns(3)
@@ -163,16 +192,13 @@ def _render_comparison(history: pd.DataFrame):
                                  "Vergangenheit gezeigt wird. Der Vergleich (0 %) startet immer "
                                  "an deinem ersten Portfolio-Datenpunkt.")
 
-    port = history[overlay].dropna()
+    anchor, port_pct, bereinigt = _portfolio_pct_series(history, overlay)
     if overlay != "Gesamt":
-        port = port[port > 0]
-
-    # Portfolio-Anker nur, wenn ein Wert > 0 vorliegt; sonst Benchmark solo.
-    anchor = None
-    port_pct = None
-    if not port.empty and float(port.iloc[-1]) > 0:
-        anchor = port.index[0]
-        port_pct = performance.pct_from_anchor(port, anchor)
+        from core.db import list_cashflows
+        if list_cashflows(1):
+            st.caption("Hinweis: Ein- und Auszahlungen sind nicht nach Anlageklasse "
+                       "aufgeteilt erfasst - diese Ansicht ist daher NICHT "
+                       "kapitalflussbereinigt (im Gegensatz zu 'Gesamt').")
 
     # Benchmark-Zeitfenster: gewählter Kontext, mit Anker mindestens bis dorthin
     # zurück (damit dort rebasiert werden kann), ohne Anker der gewählte Zeitbereich.
@@ -197,7 +223,8 @@ def _render_comparison(history: pd.DataFrame):
     else:
         st.caption(f"{benchmark} ist momentan nicht verfügbar.")
     if port_pct is not None:
-        fig.add_scatter(x=port_pct.index, y=port_pct, name=f"Portfolio: {overlay}",
+        label = f"Portfolio: {overlay}" + (" (bereinigt)" if bereinigt else "")
+        fig.add_scatter(x=port_pct.index, y=port_pct, name=label,
                         mode="lines+markers", line=dict(color=_C_PORT))
         if len(port_pct) < 2:
             st.caption("Dein Portfolio hat erst einen Datenpunkt - die Vergleichslinie wächst mit jedem Tag.")
@@ -283,7 +310,11 @@ def render():
     bank_cash = latest_cash_balance() or 0.0
     total_wealth = stock_total + crypto_total + bank_cash
 
-    performance.record_snapshots(stock_total, crypto_total, bank_cash)
+    performance.record_snapshots(
+        stock_total, crypto_total, bank_cash,
+        stock_priceable=all_priceable(stock_vals),
+        crypto_priceable=all_priceable(crypto_vals),
+    )
     from core import shadow
     for scope in shadow.SCOPES:
         if shadow.exists(scope):

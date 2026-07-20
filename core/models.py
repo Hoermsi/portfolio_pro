@@ -30,14 +30,22 @@ class Valuation:
 
 
 def evaluate(position: Position, price_native: float | None, fx_to_eur: float | None) -> Valuation:
-    """Bewertet eine Position. Einstandskurs ist in EUR (Flatex-/Kraken-Konvention)."""
+    """Bewertet eine Position. Einstandskurs ist in EUR (Flatex-/Kraken-Konvention).
+
+    `fx_to_eur is None` heißt: der Wechselkurs war nicht ermittelbar (data/fx
+    liefert bei EUR immer 1.0, nie None) - die Position bleibt dann bewusst
+    unbewertet statt fälschlich 1:1 in EUR umgerechnet zu werden (hätte z.B.
+    eine 185-USD-Aktie stillschweigend als 185 € gezeigt).
+    """
     v = Valuation(position=position)
     if price_native is None:
         v.error = "Kein Kurs verfügbar"
         return v
-    fx = fx_to_eur if fx_to_eur else 1.0
+    if fx_to_eur is None:
+        v.error = "Kein Wechselkurs verfügbar"
+        return v
     v.price_native = price_native
-    v.price_eur = price_native * fx
+    v.price_eur = price_native * fx_to_eur
     v.value_eur = v.price_eur * position.quantity
     v.cost_basis = position.buy_price_eur * position.quantity
     v.has_cost = position.buy_price_eur > 0

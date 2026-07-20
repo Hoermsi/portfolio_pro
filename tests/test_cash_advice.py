@@ -40,3 +40,29 @@ def test_cash_prompt_empty_portfolio(tmp_db, monkeypatch):
     monkeypatch.setattr(dossier, "portfolio_summary", lambda: _summary(0, 0, 0))
     text = dossier.cash_allocation_prompt()
     assert "BANKGUTHABEN" in text          # kein Crash bei leerem Depot
+
+
+def test_cash_prompt_respects_emergency_fund_over_target(tmp_db, monkeypatch):
+    """Der Notgroschen darf nicht angetastet werden, auch wenn er über der
+    prozentualen Ziel-Cash-Quote liegt (sonst würde die KI ihn zum Investieren
+    vorschlagen - genau das, was er verhindern soll)."""
+    from core.profile import save_emergency_fund_eur
+    tmp_db.set_meta("target_allocation", json.dumps({"stock": 60, "crypto": 20, "cash": 20}))
+    save_emergency_fund_eur(8000.0)
+    # Gesamt 10.000 EUR, Ziel-Cash 20% = 2.000, aber Notgroschen 8.000 > Ziel
+    monkeypatch.setattr(dossier, "portfolio_summary", lambda: _summary(4000, 1000, 5000))
+    text = dossier.cash_allocation_prompt()
+    assert "NOTGROSCHEN" in text
+    assert "FREI INVESTIERBARES CASH: 0.00 EUR" in text  # 5000 Cash < 8000 Reserve
+
+
+def test_cash_prompt_emergency_fund_below_target_no_mention(tmp_db, monkeypatch):
+    """Liegt der Notgroschen unter der Ziel-Cash-Quote, bleibt die Ziel-Quote
+    maßgeblich - kein irrelevanter Notgroschen-Hinweis im Prompt."""
+    from core.profile import save_emergency_fund_eur
+    tmp_db.set_meta("target_allocation", json.dumps({"stock": 60, "crypto": 20, "cash": 20}))
+    save_emergency_fund_eur(500.0)  # weit unter Ziel-Cash (2000)
+    monkeypatch.setattr(dossier, "portfolio_summary", lambda: _summary(4000, 1000, 5000))
+    text = dossier.cash_allocation_prompt()
+    assert "NOTGROSCHEN" not in text
+    assert "FREI INVESTIERBARES CASH: 3,000.00 EUR" in text  # unverändert wie zuvor

@@ -9,10 +9,19 @@ from core import db
 PERIODS = {"1M": 30, "3M": 90, "6M": 180, "1J": 365, "3J": 1095, "5J": 1825}
 
 
-def record_snapshots(stock_value: float, crypto_value: float, cash_value: float = 0.0):
-    """Tages-Snapshot je Anlageklasse speichern (überschreibt denselben Tag)."""
-    db.save_snapshot("stock", stock_value)
-    db.save_snapshot("crypto", crypto_value)
+def record_snapshots(stock_value: float, crypto_value: float, cash_value: float = 0.0, *,
+                     stock_priceable: bool = True, crypto_priceable: bool = True):
+    """Tages-Snapshot je Anlageklasse speichern (überschreibt denselben Tag).
+
+    `*_priceable=False` überspringt den Snapshot dieser Klasse - ein
+    kurzzeitiger Kursausfall würde sonst als echter Wertverlust im Verlauf,
+    der KI-Vergleichsbasis und der Projektion landen (Positionen ohne Kurs
+    zählen in *_value sonst als 0).
+    """
+    if stock_priceable:
+        db.save_snapshot("stock", stock_value)
+    if crypto_priceable:
+        db.save_snapshot("crypto", crypto_value)
     db.save_snapshot("cash", cash_value)
 
 

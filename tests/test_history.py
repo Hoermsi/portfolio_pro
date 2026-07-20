@@ -42,6 +42,38 @@ def test_snapshot_series_sorted_datetime_index(tmp_db):
     assert str(df.index.dtype).startswith("datetime64")
 
 
+def test_dashboard_comparison_uses_capital_flow_adjustment(tmp_db):
+    """'Gesamt' im Dashboard-Vergleich muss den bereinigten Index nutzen -
+    sonst sähe eine Einzahlung wie ein Kursgewinn aus (Kernfehler)."""
+    from views.dashboard import _portfolio_pct_series
+    tmp_db.save_snapshot("stock", 1000.0, "2026-07-01")
+    tmp_db.save_snapshot("cash", 0.0, "2026-07-01")
+    tmp_db.save_snapshot("stock", 1600.0, "2026-07-02")  # +600, davon 500 Einzahlung
+    tmp_db.save_snapshot("cash", 0.0, "2026-07-02")
+    tmp_db.add_cashflow(500.0, "2026-07-02", "Einzahlung")
+
+    history = performance.history_df()
+    anchor, pct, bereinigt = _portfolio_pct_series(history, "Gesamt")
+    assert bereinigt is True
+    # Ohne Bereinigung wären es +60% (1600/1000-1); bereinigt nur die echte
+    # Rendite von (1600-500)/1000-1 = +10%.
+    assert abs(pct.iloc[-1] - 10.0) < 1e-6
+
+
+def test_dashboard_comparison_non_gesamt_not_adjusted(tmp_db):
+    """Für Aktien/Krypto separat bleibt es bewusst die rohe Reihe - Kapital-
+    bewegungen sind nicht nach Anlageklasse aufgeteilt erfasst."""
+    from views.dashboard import _portfolio_pct_series
+    tmp_db.save_snapshot("stock", 1000.0, "2026-07-01")
+    tmp_db.save_snapshot("stock", 1600.0, "2026-07-02")
+    tmp_db.add_cashflow(500.0, "2026-07-02", "Einzahlung")
+
+    history = performance.history_df()
+    _, pct, bereinigt = _portfolio_pct_series(history, "Aktien")
+    assert bereinigt is False
+    assert abs(pct.iloc[-1] - 60.0) < 1e-6   # unbereinigt: volle 60%
+
+
 def test_periods_complete():
     assert list(performance.PERIODS) == ["1M", "3M", "6M", "1J", "3J", "5J"]
 
@@ -53,6 +85,24 @@ def test_history_includes_cash_in_total(tmp_db):
     history = performance.history_df()
     assert history is not None
     assert history["Gesamt"].iloc[0] == 1700.0
+
+
+def test_record_snapshots_skips_when_not_priceable(tmp_db):
+    """Bei Kursausfall wird der Snapshot dieser Klasse übersprungen statt einen
+    Fake-Einbruch festzuschreiben - Cash wird trotzdem immer aktualisiert."""
+    tmp_db.save_snapshot("stock", 1000.0, "2026-07-01")
+    performance.record_snapshots(0.0, 500.0, 200.0, stock_priceable=False, crypto_priceable=True)
+    snaps = {s["asset_type"]: s["total_value_eur"] for s in tmp_db.list_snapshots()
+             if s["snap_date"] == date.today().isoformat()}
+    assert "stock" not in snaps          # nicht überschrieben mit 0.0
+    assert snaps["crypto"] == 500.0
+    assert snaps["cash"] == 200.0
+
+
+def test_record_snapshots_writes_when_priceable(tmp_db):
+    performance.record_snapshots(1000.0, 500.0, 200.0)  # Default: beide priceable
+    snaps = {s["asset_type"]: s["total_value_eur"] for s in tmp_db.list_snapshots()}
+    assert snaps == {"stock": 1000.0, "crypto": 500.0, "cash": 200.0}
 
 
 def test_performance_index_removes_external_deposit(tmp_db):

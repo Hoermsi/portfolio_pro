@@ -30,6 +30,16 @@ def total_value(valuations: list[Valuation]) -> float:
     return sum(v.value_eur or 0.0 for v in valuations)
 
 
+def all_priceable(valuations: list[Valuation]) -> bool:
+    """True, wenn keine Position einen Bewertungsfehler hat (leere Liste = True).
+
+    Wichtig für Tages-Snapshots: ein kurzzeitiger Kursausfall (yfinance/
+    CoinGecko) darf den Verlaufswert nicht künstlich einbrechen lassen - der
+    fehlende Kurs zählt in `total_value` sonst stillschweigend als 0.
+    """
+    return all(v.error is None for v in valuations)
+
+
 def portfolio_summary() -> dict:
     """Kompakte Übersicht für Agenten/Chat: Positionen, Werte, Allokation."""
     result = {"aktien": [], "krypto": [], "gesamt_eur": 0.0}
