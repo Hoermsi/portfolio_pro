@@ -5,20 +5,11 @@ from datetime import date
 import streamlit as st
 
 from core import config, db
-from core.profile import max_target_return, risk_profile, save_risk_profile
+# target_allocation liegt jetzt in core.profile (auch für agents/* nutzbar);
+# hier re-exportiert, damit bestehende Aufrufer (dashboard, report) weiterlaufen.
+from core.profile import (max_target_return, risk_profile, save_risk_profile,
+                          target_allocation)
 from ui import components
-
-_DEFAULT_TARGETS = {"stock": 60, "crypto": 20, "cash": 20}
-
-
-def target_allocation() -> dict[str, float]:
-    """Gespeicherte Zielallokation mit sicheren Standardwerten laden."""
-    raw = db.get_meta("target_allocation")
-    try:
-        values = json.loads(raw) if raw else {}
-    except json.JSONDecodeError:
-        values = {}
-    return {key: float(values.get(key, default)) for key, default in _DEFAULT_TARGETS.items()}
 
 
 def render():

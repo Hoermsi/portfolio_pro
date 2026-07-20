@@ -6,7 +6,7 @@ from analysis import risk as risk_analysis
 from analysis import technical
 from core import db
 from core.portfolio import portfolio_summary, value_position
-from core.profile import risk_profile
+from core.profile import risk_profile, target_allocation
 from data import crypto as crypto_data
 from data import news as news_data
 from data import stocks as stock_data
@@ -70,6 +70,49 @@ def risk_profile_prompt() -> str:
         lines.append(f"Geplanter Pensionsantritt: {p['retirement_year']}.")
     lines.append("Richte Tonalität und Aggressivität deiner Einschätzung daran aus. "
                  "Dies bleibt eine Experiment-/Informationsfunktion, keine Anlageberatung.")
+    return "\n".join(lines)
+
+
+def cash_allocation_prompt() -> str:
+    """Prompt-Block zu Cash und Zielallokation - genutzt von Review und Stratege.
+
+    Nennt Bankguthaben, Ist- vs. Ziel-Allokation, die noetige EUR-Anpassung je
+    Anlageklasse und das FREI investierbare Cash (Cash ueber der Ziel-Cash-Quote,
+    die als Reserve stehen bleibt). Fordert konkrete Vorschlaege mit EUR-Betrag +
+    Symbol, die die Zielallokation annaehern.
+    """
+    s = portfolio_summary()
+    targets = target_allocation()
+    total = s["gesamt_eur"]
+    cash = s.get("cash_eur", 0.0)
+    alloc = s.get("allokation") or {}
+
+    lines = [f"BANKGUTHABEN (Cash): {cash:,.2f} EUR",
+             f"Gesamtvermoegen: {total:,.2f} EUR"]
+    if total > 0:
+        ist = {"stock": alloc.get("aktien_pct", 0.0),
+               "crypto": alloc.get("krypto_pct", 0.0),
+               "cash": alloc.get("cash_pct", 0.0)}
+        namen = {"stock": "Aktien", "crypto": "Krypto", "cash": "Cash"}
+        lines.append("Ist- vs. Ziel-Allokation (+ = zukaufen, - = reduzieren):")
+        for key in ("stock", "crypto", "cash"):
+            ziel = targets[key]
+            delta_eur = (ziel - ist[key]) / 100 * total
+            lines.append(f"- {namen[key]}: ist {ist[key]:.1f}% / ziel {ziel:.1f}% "
+                         f"-> {delta_eur:+,.0f} EUR")
+        ziel_cash = targets["cash"] / 100 * total
+        frei = max(0.0, cash - ziel_cash)
+        lines.append(f"FREI INVESTIERBARES CASH: {frei:,.2f} EUR "
+                     f"(Bankguthaben minus Ziel-Cash-Reserve von {ziel_cash:,.0f} EUR).")
+        if frei > 0:
+            lines.append("Wenn frei investierbares Cash vorhanden ist, mache KONKRETE "
+                         "Vorschlaege mit EUR-Betrag und Symbol (z.B. '500 EUR in einen "
+                         "Welt-ETF wie IWDA'), die die Ist-Allokation in Richtung Ziel "
+                         "bewegen. Neue Instrumente (Aktien/ETFs) sind erlaubt, nicht nur "
+                         "Bestandspositionen. Halte die Ziel-Cash-Reserve zurueck.")
+        else:
+            lines.append("Kein Cash ueber der Ziel-Reserve frei - empfiehl keine "
+                         "cash-finanzierten Zukaeufe, sondern hoechstens Umschichtungen.")
     return "\n".join(lines)
 
 
@@ -171,5 +214,6 @@ def portfolio_prompt(d: dict) -> str:
     if d["korrelation"]:
         lines += ["", "KORRELATION DER TAGESRENDITEN (Top-Positionen):",
                   json.dumps(d["korrelation"], ensure_ascii=False)]
+    lines += ["", "CASH & ZIELALLOKATION:", cash_allocation_prompt()]
     lines += ["", risk_profile_prompt()]
     return "\n".join(lines)

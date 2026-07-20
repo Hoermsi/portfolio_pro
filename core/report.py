@@ -54,7 +54,7 @@ def build_monthly_pdf(month: date) -> bytes:
     cash = db.latest_cash_balance() or 0.0
     total = stock_total + crypto_total + cash
 
-    from views.settings import target_allocation
+    from core.profile import target_allocation
     targets = target_allocation()
 
     styles = getSampleStyleSheet()

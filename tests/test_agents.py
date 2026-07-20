@@ -1,7 +1,27 @@
 from types import SimpleNamespace
 
-from agents.base import compute_cost, parse_json
+from agents.base import (PORTFOLIO_SENIOR_SCHEMA, SENIOR_SCHEMA, compute_cost,
+                         parse_json)
 from data.kraken import get_eur_cash, normalize_asset
+
+
+def test_portfolio_senior_schema_has_cash_vorschlaege():
+    assert "cash_vorschlaege" in PORTFOLIO_SENIOR_SCHEMA["properties"]
+    assert "cash_vorschlaege" in PORTFOLIO_SENIOR_SCHEMA["required"]
+    # Einzelwert-Analyse bleibt ohne Cash-Feld
+    assert "cash_vorschlaege" not in SENIOR_SCHEMA["properties"]
+    # Item-Felder korrekt
+    item = PORTFOLIO_SENIOR_SCHEMA["properties"]["cash_vorschlaege"]["items"]
+    assert set(item["required"]) == {"betrag_eur", "symbol", "asset_type", "begruendung"}
+
+
+def test_strategist_schema_has_cash_hinweis():
+    from agents import strategist
+    schema = strategist._schema_for("stock")
+    assert "cash_hinweis" in schema["properties"]
+    # cash_hinweis ist optional (nicht required), Empfehlungen bleiben mandats-beschränkt
+    enum = schema["properties"]["empfehlungen"]["items"]["properties"]["asset_type"]["enum"]
+    assert enum == ["stock", "cash"]
 
 
 def test_parse_json_variants():

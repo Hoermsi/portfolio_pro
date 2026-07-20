@@ -247,6 +247,16 @@ def render_senior_report(result: dict, key_prefix: str = ""):
         st.markdown("**Risiken**")
         for r in senior.get("risiken", []):
             st.markdown(f"- ⚠️ {r}")
+    # Nur beim Portfolio-Review vorhanden (Einzelwert-Analyse liefert das Feld nicht).
+    cash_vorschlaege = senior.get("cash_vorschlaege") or []
+    if cash_vorschlaege:
+        st.markdown("#### 💶 Cash einsetzen")
+        st.caption("Vorschläge, freies Cash entlang deiner Zielallokation zu investieren "
+                   "(keine Anlageberatung).")
+        for v in cash_vorschlaege:
+            betrag = v.get("betrag_eur")
+            betrag_txt = f"{betrag:,.0f} €" if isinstance(betrag, (int, float)) else "—"
+            st.markdown(f"- **{betrag_txt} → {v.get('symbol', '?')}**: {v.get('begruendung', '')}")
     render_usage(result.get("senior_usage", {}))
 
 

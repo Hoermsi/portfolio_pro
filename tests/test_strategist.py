@@ -126,6 +126,23 @@ def test_build_prompt_contains_risk_profile(strat_db, monkeypatch):
     assert "2055" in prompt
 
 
+def test_build_prompt_contains_cash_block(strat_db, monkeypatch):
+    """Cash & Zielallokation des Nutzers muessen im Strategen-Prompt ankommen."""
+    monkeypatch.setattr(strategist, "portfolio_summary",
+                        lambda: {"krypto": [], "aktien": [], "gesamt_eur": 0.0})
+    monkeypatch.setattr(strategist, "_position_metrics", lambda *a: {})
+    # cash_allocation_prompt nutzt dossier.portfolio_summary
+    from agents import dossier
+    monkeypatch.setattr(dossier, "portfolio_summary",
+                        lambda: {"aktien_summe_eur": 0, "krypto_summe_eur": 0, "cash_eur": 5000.0,
+                                 "gesamt_eur": 5000.0, "aktien": [], "krypto": [],
+                                 "allokation": {"aktien_pct": 0.0, "krypto_pct": 0.0, "cash_pct": 100.0}})
+    prompt = strategist.build_prompt("crypto")
+    assert "CASH & ZIELALLOKATION" in prompt
+    assert "BANKGUTHABEN" in prompt
+    assert "nicht Teil des KI-Depots" in prompt
+
+
 def test_system_prompt_mentions_risk_profile():
     assert "Risikoprofil" in strategist._system_for("crypto")
     assert "keine Anlageberatung" in strategist._system_for("crypto")

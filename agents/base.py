@@ -34,6 +34,33 @@ SENIOR_SCHEMA = {
     "additionalProperties": False,
 }
 
+# Wie SENIOR_SCHEMA, aber zusätzlich mit konkreten Cash-Einsatz-Vorschlägen für
+# das Portfolio-Review (frei investierbares Cash entlang der Zielallokation).
+PORTFOLIO_SENIOR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        **SENIOR_SCHEMA["properties"],
+        "cash_vorschlaege": {
+            "type": "array",
+            "description": "Konkrete Vorschläge, freies Cash einzusetzen. Leer, wenn kein "
+                           "Cash über der Ziel-Reserve frei ist.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "betrag_eur": {"type": "number", "description": "einzusetzender Betrag in EUR"},
+                    "symbol": {"type": "string", "description": "Ziel-Instrument, z.B. IWDA oder BTC"},
+                    "asset_type": {"type": "string", "enum": ["stock", "crypto", "cash"]},
+                    "begruendung": {"type": "string", "description": "kurze Begründung auf Deutsch"},
+                },
+                "required": ["betrag_eur", "symbol", "asset_type", "begruendung"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": SENIOR_SCHEMA["required"] + ["cash_vorschlaege"],
+    "additionalProperties": False,
+}
+
 
 def parse_json(text: str) -> dict | None:
     """Robustes Parsen, auch wenn JSON in Text eingebettet ist."""

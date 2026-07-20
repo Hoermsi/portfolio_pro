@@ -52,3 +52,20 @@ def test_max_target_return_mapping():
     assert max_target_return(10) == pytest.approx(17.0)
     caps = [max_target_return(r) for r in range(1, 11)]
     assert caps == sorted(caps)  # monoton steigend
+
+
+def test_target_allocation_defaults_and_stored(tmp_db):
+    from core.profile import target_allocation
+    assert target_allocation() == {"stock": 60.0, "crypto": 20.0, "cash": 20.0}
+    tmp_db.set_meta("target_allocation", json.dumps({"stock": 50, "crypto": 30, "cash": 20}))
+    assert target_allocation() == {"stock": 50.0, "crypto": 30.0, "cash": 20.0}
+    # kaputtes JSON -> Defaults
+    tmp_db.set_meta("target_allocation", "{kaputt")
+    assert target_allocation() == {"stock": 60.0, "crypto": 20.0, "cash": 20.0}
+
+
+def test_target_allocation_reexport_matches(tmp_db):
+    """views.settings re-exportiert dieselbe Funktion aus core.profile."""
+    from core.profile import target_allocation as core_ta
+    from views.settings import target_allocation as view_ta
+    assert view_ta is core_ta

@@ -6,7 +6,7 @@ deren Entwicklung seit dem Aufruf (Erfolgskontrolle).
 import json
 
 from agents.base import run_json_agent
-from agents.dossier import risk_profile_prompt
+from agents.dossier import cash_allocation_prompt, risk_profile_prompt
 from core import db, shadow
 from core.config import CLAUDE_PRICING
 from core.portfolio import portfolio_summary
@@ -55,6 +55,12 @@ def _schema_for(scope: str) -> dict:
                     "additionalProperties": False,
                 },
             },
+            "cash_hinweis": {
+                "type": "string",
+                "description": "Optionaler Hinweis fuer das ECHTE Depot des Nutzers zum Einsatz "
+                               "seines freien Bankguthabens (EUR-Betrag + Symbol). Leer lassen, "
+                               "wenn kein freies Cash vorhanden ist. Betrifft NICHT das KI-Depot.",
+            },
         },
         "required": ["marktausblick", "gesamtkommentar", "empfehlungen"],
         "additionalProperties": False,
@@ -83,6 +89,10 @@ def _system_for(scope: str) -> str:
         "- Berücksichtige das im Prompt genannte Risikoprofil des Nutzers: bei niedriger "
         "Risikobereitschaft konservativer agieren (größere Cash-Quote, etablierte Werte), "
         "bei hoher darfst du offensiver umschichten.\n"
+        "- Das im Prompt genannte Bankguthaben des Nutzers gehört NICHT zu deinem KI-Depot. "
+        "Deine 'empfehlungen' und 'anteil_pct' beziehen sich ausschließlich auf das virtuelle "
+        "Depot (Depot-Cash). Für das echte Bankguthaben gibst du bei freiem Cash höchstens "
+        "einen separaten 'cash_hinweis' (EUR-Betrag + Symbol, an der Zielallokation orientiert).\n"
         "- Dies ist keine Anlageberatung, sondern das Management eines Testdepots."
     )
 
@@ -175,6 +185,8 @@ def build_prompt(scope: str) -> str:
         + json.dumps(real[real_key], ensure_ascii=False, indent=1) + "\n\n"
         "== DEINE FRÜHEREN EMPFEHLUNGEN & ERGEBNISSE ==\n" + _history_block(scope) + "\n\n"
         "== PERFORMANCE-STAND ==\n" + _performance_block(scope) + "\n\n"
+        "== CASH & ZIELALLOKATION DES NUTZERS (nur Kontext, nicht Teil des KI-Depots) ==\n"
+        + cash_allocation_prompt() + "\n\n"
         "== RISIKOPROFIL DES NUTZERS ==\n" + risk_profile_prompt() + "\n\n"
         "Gib jetzt deine aktualisierten Handlungsanweisungen für dein KI-Depot."
     )
@@ -225,6 +237,7 @@ def run_strategy(scope: str, model: str, progress_cb=None) -> dict:
         "scope": scope,
         "marktausblick": parsed.get("marktausblick", ""),
         "gesamtkommentar": parsed.get("gesamtkommentar", ""),
+        "cash_hinweis": parsed.get("cash_hinweis", ""),
         "empfehlungen": empfehlungen,
         "usage": usage,
         "total_cost_usd": cost,

@@ -161,6 +161,11 @@ def _render_last_strategy(scope: str):
         st.info(result["marktausblick"])
     if result.get("gesamtkommentar"):
         st.markdown(f"_{result['gesamtkommentar']}_")
+    if result.get("cash_hinweis"):
+        st.markdown("##### 💶 Hinweis zu deinem echten Depot (Cash)")
+        st.info(result["cash_hinweis"])
+        st.caption("Bezieht sich auf dein echtes Bankguthaben – die KI-Trades unten "
+                   "betreffen weiterhin nur das virtuelle Schatten-Depot.")
 
     empf = result.get("empfehlungen", [])
     outcomes = result.get("outcomes", [])

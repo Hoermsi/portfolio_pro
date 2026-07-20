@@ -7,9 +7,8 @@ import streamlit as st
 
 from analysis import alerts, performance
 from core.portfolio import total_value, valued_positions
-from core.profile import risk_profile
+from core.profile import risk_profile, target_allocation
 from ui import components
-from views.settings import target_allocation
 
 # Dashboard-Benchmarks: alle über yfinance (auch BTC-EUR), damit lange
 # Historie verfügbar ist - CoinGecko free liefert nur 365 Tage.

@@ -10,6 +10,24 @@ from core import db
 _DEFAULT_RISK_PROFILE = {"risk": 5, "target_return_pct": 6.0, "retirement_year": None,
                          "monthly_contribution": 0.0}
 
+_DEFAULT_TARGETS = {"stock": 60, "crypto": 20, "cash": 20}
+
+
+def target_allocation() -> dict[str, float]:
+    """Gespeicherte Zielallokation (%) mit sicheren Standardwerten laden.
+
+    Liegt in core (statt in der View-Schicht), damit auch agents/* und analysis/*
+    sie ohne Streamlit-Import nutzen können.
+    """
+    raw = db.get_meta("target_allocation")
+    try:
+        values = json.loads(raw) if raw else {}
+        if not isinstance(values, dict):
+            values = {}
+    except (json.JSONDecodeError, TypeError):
+        values = {}
+    return {key: float(values.get(key, default)) for key, default in _DEFAULT_TARGETS.items()}
+
 
 def max_target_return(risk: int) -> float:
     """Obergrenze der Zielrendite p.a. in % je Risikostufe: 2% + 1,5% pro Stufe.

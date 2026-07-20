@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 
 from agents import dossier as dossier_mod
-from agents.base import SENIOR_SCHEMA, run_json_agent
+from agents.base import PORTFOLIO_SENIOR_SCHEMA, SENIOR_SCHEMA, run_json_agent
 from agents.specialists import SPECIALISTS, run_specialist
 from core import db
 from core.models import AgentReport
@@ -15,6 +15,15 @@ _SENIOR_SYSTEM = (
     "begründen. Antworte nüchtern, konkret und auf Deutsch. Du gibst keine "
     "Anlageberatung, sondern eine professionelle Einschätzung. "
     "gesamtscore: 0 = klarer Verkauf, 100 = klarer Kauf."
+)
+
+_PORTFOLIO_SENIOR_SYSTEM = (
+    _SENIOR_SYSTEM + " Dir liegen zusätzlich Cash-Bestand und Zielallokation des "
+    "Nutzers vor. Wenn freies Cash über der Ziel-Cash-Reserve vorhanden ist, mache "
+    "in 'cash_vorschlaege' KONKRETE Vorschläge mit EUR-Betrag und Symbol, die die "
+    "Ist-Allokation Richtung Ziel bewegen (neue Aktien/ETFs erlaubt). Ist kein Cash "
+    "frei, gib 'cash_vorschlaege' als leere Liste zurück. Die Summe der Vorschläge "
+    "darf das frei investierbare Cash nicht überschreiten."
 )
 
 
@@ -98,11 +107,14 @@ _SCOPE_TARGETS = {"all": "PORTFOLIO", "stock": "PORTFOLIO-AKTIEN", "crypto": "PO
 _SCOPE_TASKS = {
     "all": ("Analysiere das Gesamtportfolio: Diversifikation, Klumpenrisiken, "
             "Korrelationen, Verhältnis Aktien/Krypto/Cash und Höhe der "
-            "Liquiditätsquote (Cash-Anteil)."),
+            "Liquiditätsquote (Cash-Anteil). Prüfe, ob und wie freies Cash entlang "
+            "der Zielallokation eingesetzt werden sollte."),
     "stock": ("Analysiere das Aktien-Portfolio: Diversifikation über Sektoren, "
-              "Klumpenrisiken, Korrelationen der Positionen."),
+              "Klumpenrisiken, Korrelationen der Positionen. Prüfe, ob freies Cash "
+              "in Aktien/ETFs eingesetzt werden sollte, um die Zielallokation zu erreichen."),
     "crypto": ("Analysiere das Krypto-Portfolio: Diversifikation, Klumpenrisiken, "
-               "Korrelationen, Anteil von Bitcoin/Ethereum vs. kleineren Coins."),
+               "Korrelationen, Anteil von Bitcoin/Ethereum vs. kleineren Coins. Prüfe, "
+               "ob freies Cash in Krypto eingesetzt werden sollte (Zielallokation beachten)."),
 }
 
 
@@ -136,7 +148,7 @@ def run_portfolio_review(scope: str, specialist_model: str, senior_model: str,
         f"== BERICHT RISIKO-MANAGER ==\n{_reports_block({'risiko': risk_report})}"
     )
     senior, senior_usage, senior_err = run_json_agent(
-        _SENIOR_SYSTEM, senior_prompt, senior_model, SENIOR_SCHEMA
+        _PORTFOLIO_SENIOR_SYSTEM, senior_prompt, senior_model, PORTFOLIO_SENIOR_SCHEMA
     )
 
     total_cost = risk_report.usage.get("cost_usd", 0) + senior_usage.get("cost_usd", 0)
