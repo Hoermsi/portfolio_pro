@@ -36,6 +36,25 @@ def test_snapshots(tmp_db):
     assert {s["total_value_eur"] for s in snaps} == {1100, 500}
 
 
+def test_sentiment_history_roundtrip_and_idempotent(tmp_db):
+    tmp_db.save_sentiment("fear_greed", 72.0, "2026-07-01")
+    tmp_db.save_sentiment("mayer", 45.0, "2026-07-01")
+    tmp_db.save_sentiment("fear_greed", 80.0, "2026-07-01")  # Overwrite gleicher Tag
+    rows = tmp_db.list_sentiment()
+    assert len(rows) == 2
+    fg = next(r for r in rows if r["indicator"] == "fear_greed")
+    assert fg["value"] == 80.0
+
+
+def test_sentiment_history_filters_by_indicator_and_days(tmp_db):
+    tmp_db.save_sentiment("fear_greed", 50.0, "2026-06-01")
+    tmp_db.save_sentiment("fear_greed", 70.0, "2026-07-15")
+    tmp_db.save_sentiment("mayer", 1.2, "2026-07-15")
+    only_fg = tmp_db.list_sentiment(indicator="fear_greed")
+    assert len(only_fg) == 2
+    assert all(r["indicator"] == "fear_greed" for r in only_fg)
+
+
 def test_record_trade_updates_position_and_journal(tmp_db):
     tmp_db.record_trade("NVDA", "stock", "buy", 2, 100, "Depot", 4, "2026-07-01")
     tmp_db.record_trade("NVDA", "stock", "buy", 1, 130, "Depot", 2, "2026-07-02")

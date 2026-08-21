@@ -6,7 +6,7 @@ als Aktien-Positionen übernommen.
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from core import config
 from core.models import Position
@@ -125,6 +125,13 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS kraken_value_history (
     snap_date TEXT PRIMARY KEY,
     value_eur REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sentiment_history (
+    id INTEGER PRIMARY KEY,
+    snap_date TEXT NOT NULL,
+    indicator TEXT NOT NULL,
+    value REAL NOT NULL,
+    UNIQUE (snap_date, indicator)
 );
 CREATE TABLE IF NOT EXISTS watchlist (
     id INTEGER PRIMARY KEY,
@@ -465,6 +472,39 @@ def list_snapshots() -> list[dict]:
         rows = con.execute(
             "SELECT snap_date, asset_type, total_value_eur FROM snapshots ORDER BY snap_date"
         ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- SENTIMENT-HISTORIE (Krypto-Markt-Temperatur) ---
+# CoinGecko liefert Dominanz/Meme-Marktkap. nur als Momentanwert ohne eigene
+# Historie - hier zeichnet die App selbst einen Verlauf auf (ein Wert pro Tag
+# und Indikator, wie snapshots/save_snapshot).
+
+def save_sentiment(indicator: str, value: float, snap_date: str | None = None):
+    d = snap_date or date.today().isoformat()
+    with _connect() as con:
+        con.execute(
+            "INSERT INTO sentiment_history (snap_date, indicator, value) VALUES (?, ?, ?) "
+            "ON CONFLICT (snap_date, indicator) DO UPDATE SET value = excluded.value",
+            (d, indicator, float(value)),
+        )
+
+
+def list_sentiment(indicator: str | None = None, days: int | None = None) -> list[dict]:
+    q = "SELECT snap_date, indicator, value FROM sentiment_history"
+    conditions = []
+    params: list = []
+    if indicator is not None:
+        conditions.append("indicator = ?")
+        params.append(indicator)
+    if days is not None:
+        conditions.append("snap_date >= ?")
+        params.append((date.today() - timedelta(days=days)).isoformat())
+    if conditions:
+        q += " WHERE " + " AND ".join(conditions)
+    q += " ORDER BY snap_date"
+    with _connect() as con:
+        rows = con.execute(q, params).fetchall()
     return [dict(r) for r in rows]
 
 

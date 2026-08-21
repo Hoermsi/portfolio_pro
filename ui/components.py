@@ -110,8 +110,23 @@ def page_header(eyebrow: str, title: str, subtitle: str | None = None):
         st.markdown(f'<div class="pp-subtle">{subtitle}</div>', unsafe_allow_html=True)
 
 
-def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = None):
+def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = None,
+                 invert: bool = False):
+    """invert=True dreht die Farbsemantik um (hoch = rot statt grün) - für
+    Kennzahlen, bei denen ein hoher Wert eine Warnung ist (z.B. Markt-
+    Überhitzung/Gier), nicht eine Kauf-Chance."""
     text = _text_color()
+    steps = [
+        {"range": [0, 40], "color": "#ff4b4b"},
+        {"range": [40, 70], "color": "#ffa500"},
+        {"range": [70, 100], "color": "#23c55e"},
+    ]
+    if invert:
+        steps = [
+            {"range": [0, 30], "color": "#23c55e"},
+            {"range": [30, 60], "color": "#ffa500"},
+            {"range": [60, 100], "color": "#ff4b4b"},
+        ]
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=score,
@@ -119,11 +134,7 @@ def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = N
         gauge={
             "axis": {"range": [0, 100], "tickcolor": text,
                      "tickfont": {"color": text}},
-            "steps": [
-                {"range": [0, 40], "color": "#ff4b4b"},
-                {"range": [40, 70], "color": "#ffa500"},
-                {"range": [70, 100], "color": "#23c55e"},
-            ],
+            "steps": steps,
             "bar": {"color": text},
         },
         title={"text": title, "font": {"color": text}},
