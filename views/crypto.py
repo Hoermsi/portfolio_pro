@@ -80,9 +80,6 @@ def _render_positions_tab():
             st.error(f"Unerwarteter Fehler: {e}")
 
     st.divider()
-    st.caption("🌡️ Markt-Temperatur und Positions-Detail (ATH-Abstand, RSI) findest du jetzt "
-              "unter **Analysen → Indikatoren & Einzelwertanalyse**.")
-    st.divider()
     positions.render_positions_table("crypto")
     st.divider()
     positions.render_add_form(
