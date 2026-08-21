@@ -1,4 +1,4 @@
-"""Indikatoren: Markt-Temperatur (Krypto/Aktien) oben,
+"""Markt & Einzelwertanalyse: Markt-Temperatur (Krypto/Aktien) oben,
 darunter Chart, Kennzahlen, News und Agenten-Voll-Analyse für einen Einzelwert."""
 from concurrent.futures import ThreadPoolExecutor
 
@@ -19,7 +19,7 @@ _PERIODS = {"3 Monate": ("3mo", 90), "1 Jahr": ("1y", 365),
 
 
 def render():
-    components.page_header("Analysen", "Indikatoren",
+    components.page_header("Analysen", "Markt & Einzelwertanalyse",
                            "Markt-Stimmung und Technik, Fundamentaldaten, Risiko und KI-Einschätzung für einen Wert.")
 
     market_label = st.radio("Markt", ["Krypto", "Aktien"], horizontal=True, key="indicator_market")

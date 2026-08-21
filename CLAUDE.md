@@ -64,7 +64,7 @@ tests/                    pytest, externe APIs gemockt/monkeypatched
 | Aktien | `views/stocks.py` + `views/positions.py` | `aktien` |
 | Krypto | `views/crypto.py` + `views/positions.py` | `krypto` |
 | Cash | `views/cash.py` | `cash` |
-| Indikatoren | `views/asset_detail.py` | `analyse` |
+| Markt & Einzelwertanalyse | `views/asset_detail.py` | `analyse` |
 | AI Desk | `views/ai_desk.py` | `ai-desk` |
 | KI-Portfolios | `views/ai_portfolio.py` | `ki-portfolio` |
 
