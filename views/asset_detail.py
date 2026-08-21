@@ -24,22 +24,21 @@ def render():
 
     market_label = st.radio("Markt", ["Krypto", "Aktien"], horizontal=True, key="indicator_market")
     market = "crypto" if market_label == "Krypto" else "stock"
+    at = market
     _render_market_temperature(market)
     st.divider()
 
-    c1, c2, c3 = st.columns([2, 1, 1])
+    st.markdown("### 🔎 Einzelwertanalyse")
+    c1, c2 = st.columns([3, 1])
     symbol = c1.text_input("Symbol", value=st.session_state.get("detail_symbol", ""),
-                           help="Aktien-Ticker (NVDA, SAP.DE) oder Krypto-Symbol (BTC)").strip().upper()
-    asset_type = c2.radio("Typ", ["Aktie", "Krypto"], horizontal=True,
-                          index=1 if st.session_state.get("detail_type") == "crypto" else 0)
-    period_label = c3.selectbox("Zeitraum", list(_PERIODS.keys()), index=1)
+                           help=("Krypto-Symbol (BTC)" if at == "crypto"
+                                 else "Aktien-Ticker (NVDA, SAP.DE)")).strip().upper()
+    period_label = c2.selectbox("Zeitraum", list(_PERIODS.keys()), index=1)
 
     if not symbol:
         st.info("Symbol eingeben - der Wert muss nicht im Portfolio sein.")
         return
     st.session_state["detail_symbol"] = symbol
-    at = "crypto" if asset_type == "Krypto" else "stock"
-    st.session_state["detail_type"] = at
 
     period_yf, period_days = _PERIODS[period_label]
     with st.spinner("Lade Kursdaten ..."):
@@ -177,35 +176,33 @@ def _render_market_temperature(market: str):
         db.save_sentiment(f"{market}:{row['key']}", row["score"])
     db.save_sentiment(f"{market}:overall", temp["score"])
 
-    col_gauge, col_info = st.columns([1, 2])
-    with col_gauge:
+    st.markdown(f"**{temp['classification']}** — {temp['score']:.0f}/100")
+    if market == "crypto":
+        if coinbase_rank:
+            st.warning(f"📱 Coinbase auf Platz {coinbase_rank} der Gratis-Charts "
+                      f"(Apple US) — erhöhtes Retail-Interesse.")
+        else:
+            st.caption("Coinbase aktuell nicht in den Top-200 Gratis-Apps.")
+
+    breakdown = temp["breakdown"]
+    cols = st.columns([3] + [1] * len(breakdown))
+    with cols[0]:
         components.render_gauge(temp["score"], "Markt-Temperatur",
                                 key=f"temp_gauge_{market}", invert=True)
-    with col_info:
-        st.markdown(f"**{temp['classification']}** — {temp['score']:.0f}/100")
-        if market == "crypto":
-            if coinbase_rank:
-                st.warning(f"📱 Coinbase auf Platz {coinbase_rank} der Gratis-Charts "
-                          f"(Apple US) — erhöhtes Retail-Interesse.")
-            else:
-                st.caption("Coinbase aktuell nicht in den Top-200 Gratis-Apps.")
+    for col, row in zip(cols[1:], breakdown):
+        with col:
+            short_label = row["label"].split(" (")[0]
+            components.render_gauge(row["score"], short_label,
+                                    key=f"sub_gauge_{market}_{row['key']}",
+                                    invert=True, height=150)
 
-    with st.expander("Wie kommt dieser Wert zustande?"):
-        if temp["breakdown"]:
-            rows = pd.DataFrame(temp["breakdown"])[["label", "text", "score", "weight_pct"]]
-            rows.columns = ["Indikator", "Wert", "Teil-Score", "Gewicht (%)"]
-            st.dataframe(rows, hide_index=True, width="stretch",
-                        column_config={
-                            "Teil-Score": st.column_config.NumberColumn(format="%.0f"),
-                            "Gewicht (%)": st.column_config.NumberColumn(format="%.1f %%"),
-                        })
-        if temp["unavailable"]:
-            labels = market_timing.labels_for(market)
-            missing = ", ".join(labels.get(k, k) for k in temp["unavailable"])
-            st.caption(f"Gerade nicht verfügbar (Gewichte auf die übrigen umverteilt): {missing}")
-        extra = (" Dominanz- und Meme-Momentum-Trends werden ab jetzt selbst aufgezeichnet "
-                "(CoinGecko liefert dafür nur Momentanwerte)." if market == "crypto" else "")
-        st.caption("Gewichtung ist eine Einschätzung, kein Backtest-Ergebnis." + extra)
+    if temp["unavailable"]:
+        labels = market_timing.labels_for(market)
+        missing = ", ".join(labels.get(k, k) for k in temp["unavailable"])
+        st.caption(f"Gerade nicht verfügbar (Gewichte auf die übrigen umverteilt): {missing}")
+    extra = (" Dominanz- und Meme-Momentum-Trends werden ab jetzt selbst aufgezeichnet "
+            "(CoinGecko liefert dafür nur Momentanwerte)." if market == "crypto" else "")
+    st.caption("Gewichtung ist eine Einschätzung, kein Backtest-Ergebnis." + extra)
 
     _render_position_details(market)
 

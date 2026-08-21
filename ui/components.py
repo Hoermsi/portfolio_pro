@@ -111,11 +111,15 @@ def page_header(eyebrow: str, title: str, subtitle: str | None = None):
 
 
 def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = None,
-                 invert: bool = False):
+                 invert: bool = False, height: int = 250):
     """invert=True dreht die Farbsemantik um (hoch = rot statt grün) - für
     Kennzahlen, bei denen ein hoher Wert eine Warnung ist (z.B. Markt-
-    Überhitzung/Gier), nicht eine Kauf-Chance."""
+    Überhitzung/Gier), nicht eine Kauf-Chance.
+
+    height < 200 rendert eine kompakte Variante (kleinere Schrift, engere
+    Ränder) - für mehrere Barometer nebeneinander (z.B. Indikator-Aufschlüsselung)."""
     text = _text_color()
+    compact = height < 200
     steps = [
         {"range": [0, 40], "color": "#ff4b4b"},
         {"range": [40, 70], "color": "#ffa500"},
@@ -130,16 +134,16 @@ def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = N
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=score,
-        number={"font": {"color": text}},
+        number={"font": {"color": text, "size": 20 if compact else 40}},
         gauge={
             "axis": {"range": [0, 100], "tickcolor": text,
-                     "tickfont": {"color": text}},
+                     "tickfont": {"color": text, "size": 9 if compact else 12}},
             "steps": steps,
             "bar": {"color": text},
         },
-        title={"text": title, "font": {"color": text}},
+        title={"text": title, "font": {"color": text, "size": 12 if compact else 17}},
     ))
-    fig.update_layout(height=250, margin=dict(t=50, b=0),
+    fig.update_layout(height=height, margin=dict(t=30 if compact else 50, b=0, l=20, r=20),
                       paper_bgcolor="rgba(0,0,0,0)", autosize=True)
     st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
 
