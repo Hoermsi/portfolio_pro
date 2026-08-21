@@ -729,6 +729,20 @@ def list_shadow_snapshots(scope: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def shadow_turnover(scope: str) -> dict:
+    """Anzahl und EUR-Volumen der tatsaechlich ausgefuehrten Trades (ohne
+    'halten') seit Start des Experiments - shadow_log wird bei reset()/
+    clear_shadow() geleert, jede vorhandene Zeile gehoert also zum laufenden
+    Experiment, keine Datums-Filterung noetig."""
+    with _connect() as con:
+        row = con.execute(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(wert_eur), 0) AS vol "
+            "FROM shadow_log WHERE scope = ? AND aktion != 'halten'",
+            (scope,),
+        ).fetchone()
+    return {"trade_count": row["cnt"], "volume_eur": float(row["vol"])}
+
+
 def add_shadow_log(scope: str, aktion: str, von_symbol: str | None, nach_symbol: str | None,
                    menge_von: float | None, menge_nach: float | None,
                    kurs_von_eur: float | None, kurs_nach_eur: float | None,

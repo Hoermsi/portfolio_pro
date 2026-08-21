@@ -90,14 +90,24 @@ def _render_dashboard(scope: str):
     if comp is not None and len(comp) >= 2:
         long = comp.reset_index().melt(id_vars="Datum", var_name="Portfolio", value_name="Index")
         fig = px.line(long, x="Datum", y="Index", color="Portfolio",
-                      color_discrete_map={"Echt": "#8894a3", "KI": "#23c55e"},
+                      color_discrete_map={"Echt": "#8894a3", "KI": "#23c55e",
+                                         "Buy&Hold": "#f0ad4e", "Gleichgewicht": "#7c6fdb"},
                       labels={"Index": "Index (Start = 100)"})
         fig.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0),
                           legend=dict(orientation="h", y=1.05), autosize=True)
         st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=f"shadow_compare_{scope}")
+        if "Buy&Hold" not in comp.columns:
+            st.caption("📊 Kein Buy&Hold-Vergleich verfügbar — entweder ein älteres Experiment "
+                       "(vor dieser Funktion gestartet) oder keine Kurshistorie für die Startbestände.")
     else:
         st.caption("📉 Der Vergleichschart entsteht ab dem zweiten Tag — die Verlaufsreihe "
                    "wächst mit jedem Öffnen des Dashboards.")
+
+    turnover = shadow.turnover_summary(scope)
+    if turnover:
+        ratio = f" ({turnover['turnover_ratio_pct']}% vom Ø-Depotwert)" if turnover["turnover_ratio_pct"] is not None else ""
+        st.caption(f"🔁 {turnover['trade_count']} Trades seit Start · "
+                   f"Volumen {turnover['volume_eur']:,.2f} €{ratio}")
 
     st.divider()
 

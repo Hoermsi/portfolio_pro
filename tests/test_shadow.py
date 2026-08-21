@@ -1,3 +1,6 @@
+import json
+
+import pandas as pd
 import pytest
 
 from core import shadow
@@ -214,3 +217,106 @@ def test_valued_shadow_and_total(shadow_db):
     finally:
         crypto_data.get_prices_eur = orig
     assert abs(total - 250.0) < 1e-9   # 2*100 + 50 Cash
+
+
+def test_init_from_real_stores_holdings_snapshot(tmp_db, monkeypatch):
+    """init_from_real() friert die Startbestaende fuer die spaetere
+    Buy&Hold-/Gleichgewichts-Baseline ein (inkl. EUR->CASH-Mapping)."""
+    tmp_db.save_position("BTC", "crypto", 1.0, 30000, category="Kraken")
+    tmp_db.save_position("EUR", "crypto", 500.0, 1.0, category="Kraken")
+    monkeypatch.setattr("data.crypto.get_prices_eur",
+                        lambda syms: {"BTC": 40000.0, "EUR": 1.0})
+
+    shadow.init_from_real("crypto")
+    holdings = shadow.start_info("crypto")["holdings"]
+    assert {"symbol": "BTC", "asset_type": "crypto", "quantity": 1.0} in holdings
+    assert {"symbol": "CASH", "asset_type": "cash", "quantity": 500.0} in holdings
+
+
+def test_baseline_columns_missing_for_legacy_experiment(tmp_db, monkeypatch):
+    """Ein Experiment ohne eingefrorene Startbestaende (vor dieser Funktion
+    gestartet) darf keine Baseline liefern UND keine Netzwerk-/Datenmodul-
+    Aufrufe ausloesen."""
+    tmp_db.set_meta("shadow_start_crypto",
+                    json.dumps({"date": "2026-07-10", "real_start": 1000.0, "shadow_start": 1000.0}))
+    tmp_db.save_snapshot("crypto", 1000.0, "2026-07-10")
+    tmp_db.save_shadow_snapshot("crypto", 1000.0, "2026-07-10")
+    tmp_db.save_shadow_snapshot("crypto", 1100.0, "2026-07-11")
+
+    def boom(*a, **k):
+        raise AssertionError("darf ohne 'holdings' nicht aufgerufen werden")
+    monkeypatch.setattr("data.crypto.get_history", boom)
+    monkeypatch.setattr("data.stocks.get_history", boom)
+
+    comp = shadow.comparison_df("crypto")
+    assert comp is not None
+    assert "Buy&Hold" not in comp.columns
+    assert "Gleichgewicht" not in comp.columns
+
+
+def test_baseline_columns_buy_and_hold(tmp_db, monkeypatch):
+    """Buy&Hold wertet die eingefrorenen Startbestaende ungehandelt fort und
+    wird wie Echt/KI auf 100 am Experiment-Start rebasiert."""
+    tmp_db.set_meta("shadow_start_crypto",
+                    json.dumps({"date": "2026-07-10", "real_start": 100.0, "shadow_start": 100.0,
+                               "holdings": [{"symbol": "BTC", "asset_type": "crypto", "quantity": 1.0}]}))
+    tmp_db.save_snapshot("crypto", 100.0, "2026-07-10")
+    tmp_db.save_snapshot("crypto", 100.0, "2026-07-11")
+    tmp_db.save_shadow_snapshot("crypto", 100.0, "2026-07-10")
+    tmp_db.save_shadow_snapshot("crypto", 100.0, "2026-07-11")
+
+    close = pd.Series([100.0, 150.0], index=pd.to_datetime(["2026-07-10", "2026-07-11"]))
+    monkeypatch.setattr("data.crypto.get_history",
+                        lambda sym, days=365: pd.DataFrame({"Close": close}))
+
+    comp = shadow.comparison_df("crypto")
+    assert comp is not None
+    assert "Buy&Hold" in comp.columns
+    assert comp.iloc[0]["Buy&Hold"] == pytest.approx(100.0)
+    assert comp.iloc[-1]["Buy&Hold"] == pytest.approx(150.0)   # +50%, wie der BTC-Kurs
+    assert "Gleichgewicht" not in comp.columns  # nur 1 Symbol
+
+
+def test_baseline_equal_weight_requires_two_symbols(tmp_db, monkeypatch):
+    tmp_db.set_meta("shadow_start_crypto",
+                    json.dumps({"date": "2026-07-10", "real_start": 100.0, "shadow_start": 100.0,
+                               "holdings": [{"symbol": "BTC", "asset_type": "crypto", "quantity": 1.0},
+                                           {"symbol": "ETH", "asset_type": "crypto", "quantity": 2.0}]}))
+    tmp_db.save_snapshot("crypto", 100.0, "2026-07-10")
+    tmp_db.save_shadow_snapshot("crypto", 100.0, "2026-07-10")
+    tmp_db.save_shadow_snapshot("crypto", 110.0, "2026-07-11")
+
+    def fake_history(sym, days=365):
+        vals = {"BTC": [100.0], "ETH": [50.0]}[sym]
+        return pd.DataFrame({"Close": vals}, index=pd.to_datetime(["2026-07-10"]))
+    monkeypatch.setattr("data.crypto.get_history", fake_history)
+
+    comp = shadow.comparison_df("crypto")
+    assert "Gleichgewicht" in comp.columns
+
+
+def test_shadow_turnover_excludes_halten(tmp_db):
+    tmp_db.add_shadow_log("crypto", "kaufen", "CASH", "BTC", 100.0, 1.0, 1.0, 100.0, 100.0)
+    tmp_db.add_shadow_log("crypto", "halten", "BTC", None, None, None, 100.0, None, None)
+    tmp_db.add_shadow_log("crypto", "verkaufen", "BTC", "CASH", 0.5, 50.0, 100.0, 1.0, 50.0)
+
+    t = tmp_db.shadow_turnover("crypto")
+    assert t["trade_count"] == 2
+    assert t["volume_eur"] == pytest.approx(150.0)
+
+
+def test_turnover_summary_ratio(tmp_db, monkeypatch):
+    monkeypatch.setattr("data.crypto.get_prices_eur", lambda syms: {"EUR": 1.0})
+    tmp_db.save_position("EUR", "crypto", 1000.0, 1.0, category="Kraken")
+    shadow.init_from_real("crypto")
+    tmp_db.save_shadow_snapshot("crypto", 1000.0, "2026-07-10")
+    tmp_db.save_shadow_snapshot("crypto", 1000.0, "2026-07-11")
+    tmp_db.add_shadow_log("crypto", "kaufen", "CASH", "BTC", 500.0, 5.0, 1.0, 100.0, 500.0)
+
+    summary = shadow.turnover_summary("crypto")
+    assert summary["trade_count"] == 1
+    assert summary["turnover_ratio_pct"] == pytest.approx(50.0)   # 500 / avg(1000,1000) * 100
+
+
+def test_turnover_summary_none_without_experiment(tmp_db):
+    assert shadow.turnover_summary("crypto") is None
