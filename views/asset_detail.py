@@ -185,7 +185,7 @@ def _render_market_temperature(market: str):
             st.caption("Coinbase aktuell nicht in den Top-200 Gratis-Apps.")
 
     breakdown = temp["breakdown"]
-    cols = st.columns([3] + [1] * len(breakdown))
+    cols = st.columns([3] + [1] * len(breakdown), vertical_alignment="bottom")
     with cols[0]:
         components.render_gauge(temp["score"], "Markt-Temperatur",
                                 key=f"temp_gauge_{market}", invert=True)
