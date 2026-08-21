@@ -188,6 +188,50 @@ def get_history(symbol: str, days: int = 365) -> pd.DataFrame | None:
     return _kraken_ohlc_eur(symbol, days)
 
 
+def get_market_data_batch(symbols) -> dict[str, dict]:
+    """Marktdaten (u.a. ATH-Abstand) für mehrere Symbole in EINEM CoinGecko-
+    Request (/coins/markets) - wie get_prices_eur() nie einzeln pro Coin
+    abfragen: parallele Einzelaufrufe von get_market_data() für viele
+    Positionen (z.B. die Positions-Detail-Tabelle) sprengen reproduzierbar
+    das freie Rate-Limit (429), wodurch der ATH-Abstand für die meisten
+    Coins leer bliebe. Liefert pro Symbol dasselbe Feld-Set wie
+    get_market_data(), leeres Dict bei nicht auflösbarem Symbol/Fehlschlag."""
+    wanted = [s.strip().upper() for s in symbols]
+    ids_map = {s: resolve_id(s) for s in dict.fromkeys(wanted)}
+    ids = sorted({i for i in ids_map.values() if i})
+    result: dict[str, dict] = {s: {} for s in wanted}
+    if not ids:
+        return result
+    try:
+        rows = _get("/coins/markets", {
+            "vs_currency": "eur", "ids": ",".join(ids),
+            "price_change_percentage": "24h,7d,30d",
+        })
+    except Exception as e:
+        print(f"crypto.get_market_data_batch: {e}")
+        return result
+    by_id = {r["id"]: r for r in rows if r.get("id")}
+    for s in wanted:
+        r = by_id.get(ids_map.get(s))
+        if not r:
+            continue
+        result[s] = {
+            "name": r.get("name"),
+            "rang": r.get("market_cap_rank"),
+            "marktkap_eur": r.get("market_cap"),
+            "volumen_24h_eur": r.get("total_volume"),
+            "kurs_eur": r.get("current_price"),
+            "ath_eur": r.get("ath"),
+            "ath_abstand_pct": r.get("ath_change_percentage"),
+            "aenderung_24h_pct": r.get("price_change_percentage_24h"),
+            "aenderung_7d_pct": r.get("price_change_percentage_7d_in_currency"),
+            "aenderung_30d_pct": r.get("price_change_percentage_30d_in_currency"),
+            "umlauf_supply": r.get("circulating_supply"),
+            "max_supply": r.get("max_supply"),
+        }
+    return result
+
+
 @ttl_cache(600)
 def get_market_data(symbol: str) -> dict:
     """Marktdaten für den KI-Kontext (Rang, Marktkap., Supply, ATH ...)."""

@@ -221,12 +221,14 @@ def _render_position_details(market: str):
     with st.expander(f"Deine Positionen im Detail ({label}, RSI)"):
         with st.spinner("Lade Kennzahlen …"):
             if market == "crypto":
-                # CoinGecko/Kraken sind für gleichzeitige Aufrufe unproblematisch.
+                # ATH-Abstand etc. in EINEM Batch-Request holen (get_market_data_batch) -
+                # ein get_market_data()-Aufruf PRO Position parallel sprengt reproduzierbar
+                # das freie CoinGecko-Rate-Limit (429), wodurch der ATH-Abstand für die
+                # meisten Coins leer bliebe.
+                extra = crypto_data.get_market_data_batch(symbols)
                 with ThreadPoolExecutor(max_workers=6) as pool:
                     metric_futures = {s: pool.submit(alerts.asset_metrics, s, market) for s in symbols}
-                    extra_futures = {s: pool.submit(crypto_data.get_market_data, s) for s in symbols}
                     metrics = {s: f.result() for s, f in metric_futures.items()}
-                    extra = {s: f.result() for s, f in extra_futures.items()}
             else:
                 # Sequentiell: yfinance ist bei gleichzeitigen yf.download()-Aufrufen
                 # für unterschiedliche Ticker nicht thread-sicher (siehe
