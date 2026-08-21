@@ -7,7 +7,7 @@ import streamlit as st
 
 from agents import senior_manager
 from analysis import alerts, market_timing, risk as risk_analysis, technical
-from core import db
+from core import db, profile
 from data import crypto as crypto_data
 from data import news as news_data
 from data import sentiment
@@ -220,7 +220,89 @@ def _render_market_temperature(market: str):
             "(CoinGecko liefert dafür nur Momentanwerte)." if market == "crypto" else "")
     st.caption("Gewichtung ist eine Einschätzung, kein Backtest-Ergebnis." + extra)
 
+    st.divider()
+    _render_cycle_ladder(market, temp, readings)
+
     _render_position_details(market)
+
+
+def _render_cycle_ladder(market: str, temp: dict, readings: dict):
+    """Zweites Barometer 'Zyklus-Position' + eigene, frei einstellbare Kauf-/
+    Verkaufs-Stufen. Zeigt nur an, was DEINE Regel gerade sagt - die App
+    verkauft/kauft nichts automatisch (wie das Notgroschen-Feature: rein
+    informativ, keine automatischen Aktionen) und bewertet die Regel selbst
+    nicht als Anlageempfehlung.
+
+    Krypto: nur Fear&Greed + Mayer Multiple - die einzigen zwei Krypto-
+    Indikatoren mit echter Mehrjahres-Historie (die übrigen 4 liefert
+    CoinGecko nur als Momentanwert, siehe market_temperature()-Docstring).
+    Aktien: entspricht 1:1 der Markt-Temperatur, da dort alle 4 Indikatoren
+    ohnehin volle Kurs-Historie haben - keine Reduktion nötig oder möglich.
+    """
+    if market == "crypto":
+        cycle = market_timing.market_temperature(
+            {"fear_greed": readings.get("fear_greed"), "mayer": readings.get("mayer")},
+            market="crypto",
+        )
+    else:
+        cycle = temp
+    if cycle["score"] is None:
+        return
+
+    cfg = profile.ladder_config(market)
+    sell, buy = cfg["sell"], cfg["buy"]
+    score = cycle["score"]
+    sell_tier = market_timing.active_ladder_tier(score, sell, "sell")
+    buy_tier = market_timing.active_ladder_tier(score, buy, "buy")
+
+    st.markdown("### 🎯 Zyklus-Position")
+    if market == "crypto":
+        st.caption(f"Nur Fear&Greed + Mayer Multiple (~{cycle['coverage_pct']:.0f}% Gewichtung "
+                   "der Markt-Temperatur) - die einzigen Krypto-Indikatoren mit echter "
+                   "Mehrjahres-Historie. Die übrigen liefert CoinGecko nur als Momentanwert.")
+    else:
+        st.caption("Entspricht der Markt-Temperatur - alle 4 Aktien-Indikatoren haben "
+                   "ohnehin volle Kurs-Historie.")
+
+    col_gauge, col_status = st.columns([1, 2])
+    with col_gauge:
+        components.render_ladder_gauge(score, "Zyklus-Position", buy, sell,
+                                       key=f"cycle_gauge_{market}", height=200)
+    with col_status:
+        if sell_tier:
+            st.warning(f"🔴 Verkaufs-Stufe {sell_tier}/3 erreicht (Score {score:.0f}) — "
+                      f"deine Regel: {profile.LADDER_FRACTIONS_PCT[sell_tier - 1]}% verkaufen.")
+        elif buy_tier:
+            st.success(f"🟢 Kauf-Stufe {buy_tier}/3 erreicht (Score {score:.0f}) — "
+                      f"deine Regel: {profile.LADDER_FRACTIONS_PCT[buy_tier - 1]}% des "
+                      "verfügbaren Cash einsetzen.")
+        else:
+            st.caption(f"Keine Stufe aktiv (Score {score:.0f}).")
+        st.caption(
+            "⚠️ Das ist **deine eigene, frei einstellbare Regel** — keine Anlageempfehlung "
+            "der App. Feste Schwellen hätten in vergangenen Bullruns oft zu früh verkauft "
+            "(z.B. Schwelle 80 im Nov. 2020 erreicht, BTC stieg danach noch +288%) oder "
+            "Alt-Coin-Tops verpasst (die Hoch-Tage einzelner Coins liegen historisch über "
+            "die gesamte Skala verteilt). Sinnvoller Einsatz eher als ein Signal unter "
+            "mehreren, nicht als Automatismus."
+        )
+
+    with st.expander("⚙️ Eigene Stufen einstellen"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Verkauf (rot)**")
+            s1 = st.number_input("Stufe 1 (33%)", 0.0, 100.0, sell[0], step=1.0, key=f"ladder_sell1_{market}")
+            s2 = st.number_input("Stufe 2 (66%)", 0.0, 100.0, sell[1], step=1.0, key=f"ladder_sell2_{market}")
+            s3 = st.number_input("Stufe 3 (100%)", 0.0, 100.0, sell[2], step=1.0, key=f"ladder_sell3_{market}")
+        with c2:
+            st.markdown("**Kauf (grün)**")
+            b1 = st.number_input("Stufe 1 (33%)", 0.0, 100.0, buy[0], step=1.0, key=f"ladder_buy1_{market}")
+            b2 = st.number_input("Stufe 2 (66%)", 0.0, 100.0, buy[1], step=1.0, key=f"ladder_buy2_{market}")
+            b3 = st.number_input("Stufe 3 (100%)", 0.0, 100.0, buy[2], step=1.0, key=f"ladder_buy3_{market}")
+        if st.button("Stufen speichern", key=f"ladder_save_{market}"):
+            profile.save_ladder_config(market, [s1, s2, s3], [b1, b2, b3])
+            st.success("Eigene Stufen gespeichert.")
+            st.rerun()
 
 
 def _render_position_details(market: str):

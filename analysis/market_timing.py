@@ -283,6 +283,20 @@ def labels_for(market: str) -> dict[str, str]:
     return _MARKETS[market]["labels"]
 
 
+def active_ladder_tier(score: float | None, thresholds: list[float], direction: str) -> int:
+    """Wie viele der (bis zu 3) Schwellen der Score bereits erreicht hat (0-3).
+
+    direction="sell": Score >= Schwelle (Gier -> Verkauf). direction="buy":
+    Score <= Schwelle (Angst -> Kauf). Zählt einfach erreichte Schwellen statt
+    eine strikte Reihenfolge der Eingabe vorauszusetzen - robust auch bei
+    versehentlich nicht sortierten Nutzer-Werten. score=None -> 0."""
+    if score is None or not thresholds:
+        return 0
+    if direction == "sell":
+        return sum(1 for t in thresholds if score >= t)
+    return sum(1 for t in thresholds if score <= t)
+
+
 def market_temperature(readings: dict, market: str = "crypto") -> dict:
     """Gewichteter Gesamtwert aus allen verfügbaren Indikatoren des gewählten Marktes.
 

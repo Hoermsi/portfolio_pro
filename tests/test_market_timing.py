@@ -298,3 +298,28 @@ def test_migrate_sentiment_prefix_is_idempotent(tmp_db):
         _migrate_sentiment_prefix(con)
     rows = {r["indicator"]: r["value"] for r in tmp_db.list_sentiment()}
     assert rows == {"crypto:overall": 60.0, "stock:overall": 40.0}
+
+
+# --- Zyklus-Position: eigene Stufen (active_ladder_tier) ---
+
+def test_active_ladder_tier_sell_counts_reached_thresholds():
+    thresholds = [65.0, 75.0, 85.0]
+    assert market_timing.active_ladder_tier(50, thresholds, "sell") == 0
+    assert market_timing.active_ladder_tier(65, thresholds, "sell") == 1   # exakt auf Schwelle
+    assert market_timing.active_ladder_tier(70, thresholds, "sell") == 1
+    assert market_timing.active_ladder_tier(80, thresholds, "sell") == 2
+    assert market_timing.active_ladder_tier(90, thresholds, "sell") == 3
+
+
+def test_active_ladder_tier_buy_counts_reached_thresholds():
+    thresholds = [25.0, 18.0, 12.0]
+    assert market_timing.active_ladder_tier(50, thresholds, "buy") == 0
+    assert market_timing.active_ladder_tier(25, thresholds, "buy") == 1   # exakt auf Schwelle
+    assert market_timing.active_ladder_tier(20, thresholds, "buy") == 1
+    assert market_timing.active_ladder_tier(15, thresholds, "buy") == 2
+    assert market_timing.active_ladder_tier(5, thresholds, "buy") == 3
+
+
+def test_active_ladder_tier_none_score_and_empty_thresholds():
+    assert market_timing.active_ladder_tier(None, [65, 75, 85], "sell") == 0
+    assert market_timing.active_ladder_tier(90, [], "sell") == 0

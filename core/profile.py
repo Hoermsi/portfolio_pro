@@ -113,3 +113,43 @@ def emergency_fund_progress_pct(cash_balance: float | None) -> float | None:
     if fund <= 0 or cash_balance is None:
         return None
     return max(0.0, float(cash_balance)) / fund * 100.0
+
+
+# --- ZYKLUS-POSITION: eigene Verkaufs-/Kauf-Stufen ("Deine Regel", keine Anlageberatung) ---
+
+_DEFAULT_LADDER_SELL = [65.0, 75.0, 85.0]   # Score-Schwellen, aufsteigend (Gier -> Verkauf)
+_DEFAULT_LADDER_BUY = [25.0, 18.0, 12.0]    # Score-Schwellen, absteigend (Angst -> Kauf)
+LADDER_FRACTIONS_PCT = (33, 66, 100)        # kumulierter Anteil je Stufe (1/3, 2/3, alles)
+
+
+def ladder_config(market: str) -> dict:
+    """Eigene Score-Schwellen für die Zyklus-Position-Stufen, je Markt getrennt
+    gespeichert. {"sell": [3 Werte], "buy": [3 Werte]} - fällt bei fehlendem/
+    kaputtem Meta-Eintrag oder falscher Länge auf die Defaults zurück."""
+    raw = db.get_meta(f"cycle_ladder_{market}")
+    try:
+        values = json.loads(raw) if raw else {}
+        if not isinstance(values, dict):
+            values = {}
+    except (json.JSONDecodeError, TypeError):
+        values = {}
+
+    def _levels(key: str, default: list[float]) -> list[float]:
+        levels = values.get(key)
+        if not isinstance(levels, list) or len(levels) != 3:
+            return list(default)
+        try:
+            return [min(100.0, max(0.0, float(v))) for v in levels]
+        except (TypeError, ValueError):
+            return list(default)
+
+    return {"sell": _levels("sell", _DEFAULT_LADDER_SELL),
+            "buy": _levels("buy", _DEFAULT_LADDER_BUY)}
+
+
+def save_ladder_config(market: str, sell: list[float], buy: list[float]):
+    """Eigene Stufen-Schwellen persistieren, je Wert auf [0, 100] geklammert."""
+    clamp = lambda vals: [min(100.0, max(0.0, float(v))) for v in vals]
+    db.set_meta(f"cycle_ladder_{market}", json.dumps({
+        "sell": clamp(sell), "buy": clamp(buy),
+    }))

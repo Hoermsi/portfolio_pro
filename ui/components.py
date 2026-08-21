@@ -166,6 +166,59 @@ def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = N
     st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
 
 
+def _shade(hex_color: str, factor: float) -> str:
+    """Hex-Farbe Richtung Weiß (factor > 0) oder Schwarz (factor < 0) verschieben,
+    Betrag 0..1 - für abgestufte Helligkeiten EINER Grundfarbe, ohne neue
+    Akzenttöne einzuführen (DESIGN.md: kein neuer Akzentton)."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+    if factor >= 0:
+        r, g, b = (int(c + (255 - c) * factor) for c in (r, g, b))
+    else:
+        r, g, b = (int(c * (1 + factor)) for c in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def render_ladder_gauge(score: float, title: str, buy_thresholds: list[float],
+                        sell_thresholds: list[float], key: str | None = None,
+                        height: int = 200):
+    """Barometer mit bis zu 6 nutzerdefinierten Stufen-Markierungen (3 Kauf/
+    grün, 3 Verkauf/rot) statt der festen 3-Band-Skala von render_gauge().
+
+    Baut aus den sortierten Schwellen 7 Farbbänder: 3 Kauf-Tiefenstufen (dunkel
+    -> hell), eine neutrale Mittelzone, 3 Verkauf-Tiefenstufen (hell -> dunkel).
+    Nutzt ausschließlich die bestehenden Palette-Töne (Grün/Rot/Chart-Slate),
+    nur in abgestufter Helligkeit - siehe _shade()."""
+    text = _text_color()
+    compact = height < 200
+    buy_sorted = sorted(buy_thresholds)
+    sell_sorted = sorted(sell_thresholds)
+    edges = [0.0] + buy_sorted + sell_sorted + [100.0]
+    green, red, neutral = "#23c55e", "#ff4b4b", "#94a3b8"
+    band_colors = [
+        _shade(green, -0.35), green, _shade(green, 0.45),
+        neutral,
+        _shade(red, 0.45), red, _shade(red, -0.35),
+    ]
+    steps = [{"range": [edges[i], edges[i + 1]], "color": band_colors[i]} for i in range(7)]
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        number={"font": {"color": text, "size": 20 if compact else 40}},
+        gauge={
+            "axis": {"range": [0, 100], "tickcolor": text,
+                     "tickfont": {"color": text, "size": 9 if compact else 12}},
+            "steps": steps,
+            "bar": {"color": text},
+        },
+        title={"text": title, "font": {"color": text, "size": 12 if compact else 17}},
+    ))
+    fig.update_layout(height=height,
+                      margin=dict(t=25 if compact else 50, b=0, l=5 if compact else 20, r=5 if compact else 20),
+                      paper_bgcolor="rgba(0,0,0,0)", autosize=True)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+
+
 def render_price_chart(df: pd.DataFrame, fibs: dict | None = None, height: int = 420,
                        key: str | None = None):
     """Kurs-Chart mit Bollinger, MA50/200 und optionalen Fibonacci-Linien."""

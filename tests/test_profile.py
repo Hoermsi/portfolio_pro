@@ -101,3 +101,39 @@ def test_emergency_fund_progress_pct(tmp_db):
     assert emergency_fund_progress_pct(3000.0) == pytest.approx(50.0)
     # Uebererfuellung bleibt sichtbar (nicht gekappt)
     assert emergency_fund_progress_pct(8000.0) == pytest.approx(133.333, rel=1e-3)
+
+
+def test_ladder_config_defaults(tmp_db):
+    from core.profile import ladder_config
+    cfg = ladder_config("crypto")
+    assert cfg == {"sell": [65.0, 75.0, 85.0], "buy": [25.0, 18.0, 12.0]}
+
+
+def test_ladder_config_roundtrip(tmp_db):
+    from core.profile import ladder_config, save_ladder_config
+    save_ladder_config("crypto", [60, 70, 80], [30, 20, 10])
+    assert ladder_config("crypto") == {"sell": [60.0, 70.0, 80.0], "buy": [30.0, 20.0, 10.0]}
+    # Aktien-Markt bleibt unabhaengig auf den Defaults
+    from core.profile import _DEFAULT_LADDER_SELL, _DEFAULT_LADDER_BUY
+    assert ladder_config("stock") == {"sell": _DEFAULT_LADDER_SELL, "buy": _DEFAULT_LADDER_BUY}
+
+
+def test_ladder_config_clamps_range(tmp_db):
+    from core.profile import ladder_config, save_ladder_config
+    save_ladder_config("crypto", [-10, 50, 150], [200, 20, -5])
+    assert ladder_config("crypto") == {"sell": [0.0, 50.0, 100.0], "buy": [100.0, 20.0, 0.0]}
+
+
+def test_ladder_config_broken_json_falls_back(tmp_db):
+    from core.profile import ladder_config
+    tmp_db.set_meta("cycle_ladder_crypto", "{kaputt")
+    assert ladder_config("crypto") == {"sell": [65.0, 75.0, 85.0], "buy": [25.0, 18.0, 12.0]}
+
+
+def test_ladder_config_wrong_length_falls_back(tmp_db):
+    import json
+    from core.profile import ladder_config
+    tmp_db.set_meta("cycle_ladder_crypto", json.dumps({"sell": [70, 80], "buy": [25, 18, 12]}))
+    cfg = ladder_config("crypto")
+    assert cfg["sell"] == [65.0, 75.0, 85.0]   # ungueltige Laenge -> Default
+    assert cfg["buy"] == [25.0, 18.0, 12.0]
