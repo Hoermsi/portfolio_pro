@@ -182,6 +182,7 @@ def init_db():
     with _connect() as con:
         con.executescript(_SCHEMA)
         _migrate_shadow_scope(con)
+        _migrate_sentiment_prefix(con)
         _backfill_onboarded(con)
     _migrate_legacy_json()
 
@@ -224,6 +225,21 @@ def _migrate_shadow_scope(con):
         "DELETE FROM meta WHERE key = 'shadow_start';"
     )
     con.executescript(_SCHEMA)
+
+
+def _migrate_sentiment_prefix(con):
+    """Sentiment-Indikatoren bekamen bislang keinen Markt-Präfix - "overall"
+    von Krypto und Aktien hätten sich sonst am selben Tag überschrieben
+    (UNIQUE(snap_date, indicator)). Alte, präfixlose Zeilen waren per
+    Definition Krypto (das einzige Sentiment vor dem Aktien-Set) und werden
+    einmalig auf "crypto:"-Präfix umgeschrieben. Natürlich idempotent: nach
+    dem ersten Lauf enthält jeder Schlüssel bereits ":", das WHERE greift
+    dann ins Leere.
+    """
+    con.execute(
+        "UPDATE sentiment_history SET indicator = 'crypto:' || indicator "
+        "WHERE indicator NOT LIKE '%:%'"
+    )
 
 
 # --- ASSETS & POSITIONEN ---
