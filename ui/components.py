@@ -110,6 +110,23 @@ def page_header(eyebrow: str, title: str, subtitle: str | None = None):
         st.markdown(f'<div class="pp-subtle">{subtitle}</div>', unsafe_allow_html=True)
 
 
+def gauge_color(score: float, invert: bool = False) -> str:
+    """Farbe passend zu den Ampel-Stufen von render_gauge() - für Text, der
+    neben/über einem Gauge dieselbe Farbsemantik tragen soll (z.B. die
+    Klartext-Einordnung "Neutral" neben der Markt-Temperatur)."""
+    if invert:
+        if score < 30:
+            return "#23c55e"
+        if score < 60:
+            return "#ffa500"
+        return "#ff4b4b"
+    if score < 40:
+        return "#ff4b4b"
+    if score < 70:
+        return "#ffa500"
+    return "#23c55e"
+
+
 def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = None,
                  invert: bool = False, height: int = 250):
     """invert=True dreht die Farbsemantik um (hoch = rot statt grün) - für

@@ -157,7 +157,6 @@ def _fetch_stock_readings() -> dict:
 
 
 def _render_market_temperature(market: str):
-    st.markdown("### 🌡️ Markt-Temperatur")
     coinbase_rank = None
     with st.spinner("Lade Sentiment-Indikatoren …"):
         if market == "crypto":
@@ -167,6 +166,7 @@ def _render_market_temperature(market: str):
     temp = market_timing.market_temperature(readings, market=market)
 
     if temp["score"] is None:
+        st.markdown("### 🌡️ Markt-Temperatur")
         st.info("Sentiment-Daten gerade nicht erreichbar.")
         return
 
@@ -176,7 +176,12 @@ def _render_market_temperature(market: str):
         db.save_sentiment(f"{market}:{row['key']}", row["score"])
     db.save_sentiment(f"{market}:overall", temp["score"])
 
-    st.markdown(f"**{temp['classification']}** — {temp['score']:.0f}/100")
+    color = components.gauge_color(temp["score"], invert=True)
+    st.markdown(
+        f"### 🌡️ Markt-Temperatur: "
+        f"<span style='color:{color}'>{temp['classification']} — {temp['score']:.0f}/100</span>",
+        unsafe_allow_html=True,
+    )
     if market == "crypto":
         if coinbase_rank:
             st.warning(f"📱 Coinbase auf Platz {coinbase_rank} der Gratis-Charts "
