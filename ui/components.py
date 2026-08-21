@@ -143,7 +143,8 @@ def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = N
         },
         title={"text": title, "font": {"color": text, "size": 12 if compact else 17}},
     ))
-    fig.update_layout(height=height, margin=dict(t=30 if compact else 50, b=0, l=20, r=20),
+    fig.update_layout(height=height,
+                      margin=dict(t=25 if compact else 50, b=0, l=5 if compact else 20, r=5 if compact else 20),
                       paper_bgcolor="rgba(0,0,0,0)", autosize=True)
     st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
 
