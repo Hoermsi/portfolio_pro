@@ -218,14 +218,21 @@ def _render_position_details(market: str):
     label = "ATH-Abstand" if market == "crypto" else "52W-Hoch-Abstand"
     with st.expander(f"Deine Positionen im Detail ({label}, RSI)"):
         with st.spinner("Lade Kennzahlen …"):
-            with ThreadPoolExecutor(max_workers=6) as pool:
-                metric_futures = {s: pool.submit(alerts.asset_metrics, s, market) for s in symbols}
-                if market == "crypto":
+            if market == "crypto":
+                # CoinGecko/Kraken sind für gleichzeitige Aufrufe unproblematisch.
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    metric_futures = {s: pool.submit(alerts.asset_metrics, s, market) for s in symbols}
                     extra_futures = {s: pool.submit(crypto_data.get_market_data, s) for s in symbols}
-                else:
-                    extra_futures = {s: pool.submit(stock_data.get_fundamentals, s) for s in symbols}
-                metrics = {s: f.result() for s, f in metric_futures.items()}
-                extra = {s: f.result() for s, f in extra_futures.items()}
+                    metrics = {s: f.result() for s, f in metric_futures.items()}
+                    extra = {s: f.result() for s, f in extra_futures.items()}
+            else:
+                # Sequentiell: yfinance ist bei gleichzeitigen yf.download()-Aufrufen
+                # für unterschiedliche Ticker nicht thread-sicher (siehe
+                # _fetch_stock_readings) - hat hier reproduzierbar Abstürze und
+                # danach über den ttl_cache falsche Werte für's eigene Symbol
+                # der Einzelwertanalyse verursacht.
+                metrics = {s: alerts.asset_metrics(s, market) for s in symbols}
+                extra = {s: stock_data.get_fundamentals(s) for s in symbols}
 
         rows = []
         for s in symbols:

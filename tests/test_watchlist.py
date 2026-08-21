@@ -1,4 +1,6 @@
 """Tests für Watchlist-DB und Alarm-Auswertung (ohne Netzwerkzugriff)."""
+import threading
+
 from analysis import alerts
 
 
@@ -61,6 +63,29 @@ def test_metrics_for_parallel(tmp_db, monkeypatch):
     m = alerts.metrics_for(db.list_watchlist())
     assert m[id1]["price_eur"] == 42.0
     assert m[id2]["price_eur"] == 99.0
+
+
+def test_metrics_for_runs_stocks_sequentially(tmp_db, monkeypatch):
+    """Aktien laufen bewusst NICHT im ThreadPoolExecutor (yfinance ist bei
+    gleichzeitigen yf.download()-Aufrufen für verschiedene Ticker nicht
+    thread-sicher - reproduzierbar TypeError/ValueError oder stille
+    Fehlwerte, die dann über den ttl_cache eine Weile hängen bleiben)."""
+    db = tmp_db
+    db.add_watchlist("NVDA", "stock")
+    db.add_watchlist("AAPL", "stock")
+    db.add_watchlist("BTC", "crypto")
+    main_thread = threading.current_thread()
+
+    def _tracked(symbol, asset_type):
+        if asset_type != "crypto":
+            assert threading.current_thread() is main_thread, (
+                f"Aktien-Symbol {symbol} wurde nicht sequentiell im Hauptthread geholt"
+            )
+        return {"price_eur": 1.0, "day_pct": None, "rsi": None}
+
+    monkeypatch.setattr(alerts, "asset_metrics", _tracked)
+    m = alerts.metrics_for(db.list_watchlist())
+    assert len(m) == 3
 
 
 def test_acknowledge_hides_until_threshold_changes(tmp_db, monkeypatch):

@@ -6,9 +6,14 @@ und wertet daraus die pro Watchlist-Eintrag konfigurierten Alarme aus
 der Watchlist-UI (Anzeige) und vom Dashboard (ausgelöste Alarme) gemeinsam
 genutzt.
 
-Kennzahlen werden für alle Einträge PARALLEL geholt (ThreadPoolExecutor wie bei
-den Analyse-Spezialisten) - die zugrunde liegenden Datenmodule cachen
-thread-sicher (core/cache.ttl_cache mit Lock).
+Kennzahlen werden für Krypto-Einträge PARALLEL geholt (ThreadPoolExecutor wie bei
+den Analyse-Spezialisten, CoinGecko/Kraken sind dafür unproblematisch). Aktien
+laufen bewusst SEQUENTIELL: yfinance ist bei gleichzeitigen yf.download()-Aufrufen
+für unterschiedliche Ticker im selben Prozess nicht thread-sicher (reproduzierbar
+stille None-Rückgaben oder harte TypeError/ValueError durch vertauschte Spalten -
+siehe views/asset_detail._fetch_stock_readings). Der Cache (core/cache.ttl_cache)
+selbst ist zwar thread-sicher, schützt aber nicht vor korrupten Werten, die
+darunter landen und dann für die TTL-Dauer falsch bedient werden.
 
 Alarme sind quittierbar: ein "Gesehen" merkt sich (watch_id, Art, Schwelle) im
 Meta-Key `alert_acks` und unterdrückt den Alarm, bis der Nutzer die Schwelle
@@ -65,13 +70,22 @@ def asset_metrics(symbol: str, asset_type: str) -> dict:
 
 
 def metrics_for(entries: list[dict]) -> dict[int, dict]:
-    """Kennzahlen für mehrere Watchlist-Einträge parallel holen: {id: metrics}."""
+    """Kennzahlen für mehrere Einträge holen: {id: metrics}.
+
+    Krypto parallel, Aktien sequentiell (yfinance-Thread-Sicherheit, s.o.)."""
     if not entries:
         return {}
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = {e["id"]: pool.submit(asset_metrics, e["symbol"], e["asset_type"])
-                   for e in entries}
-        return {wid: fut.result() for wid, fut in futures.items()}
+    crypto_entries = [e for e in entries if e["asset_type"] == "crypto"]
+    stock_entries = [e for e in entries if e["asset_type"] != "crypto"]
+    result: dict[int, dict] = {}
+    if crypto_entries:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = {e["id"]: pool.submit(asset_metrics, e["symbol"], e["asset_type"])
+                       for e in crypto_entries}
+            result.update({wid: fut.result() for wid, fut in futures.items()})
+    for e in stock_entries:
+        result[e["id"]] = asset_metrics(e["symbol"], e["asset_type"])
+    return result
 
 
 def _triggers_for(entry: dict, metrics: dict) -> list[dict]:
