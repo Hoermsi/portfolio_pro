@@ -419,11 +419,20 @@ def remove_watchlist(watch_id: int):
 
 def record_trade(symbol: str, asset_type: str, side: str, quantity: float,
                  price_eur: float, category: str = "Standard", fees_eur: float = 0.0,
-                 trade_date: str | None = None, note: str = "") -> int:
+                 trade_date: str | None = None, note: str = "",
+                 fund_from_cash: bool = False) -> int:
     """Bucht einen Kauf/Verkauf und aktualisiert die betroffene Position atomar.
 
     Käufe bilden den durchschnittlichen Einstand inklusive Gebühren neu. Bei
     Verkäufen bleibt der bisherige durchschnittliche Einstand erhalten.
+
+    `fund_from_cash=True` bucht zusätzlich eine Cash-Gegenbuchung in `cash_log`
+    (Kauf: -(Menge*Preis+Gebühren), Verkauf: +(Menge*Preis-Gebühren)) - ohne das
+    würde ein aus dem getrackten Bank-Cash bezahlter Kauf das Gesamtvermögen
+    künstlich erhöhen (Asset-Seite steigt, Cash-Seite bleibt unverändert). Der
+    Zeitstempel der Cash-Buchung ist bewusst "jetzt", nicht `trade_date`:
+    latest_cash_balance()/die Liquiditäts-Chart sortieren nach Einfüge-
+    Reihenfolge (id) - ein rückdatierter Cash-Eintrag würde diese Annahme brechen.
     """
     side = side.lower().strip()
     quantity, price_eur, fees_eur = float(quantity), float(price_eur), float(fees_eur)
@@ -471,6 +480,17 @@ def record_trade(symbol: str, asset_type: str, side: str, quantity: float,
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (now, trade_date, asset_id, category, side, quantity, price_eur, fees_eur, note.strip()),
         )
+        if fund_from_cash:
+            gross = quantity * price_eur
+            delta = -(gross + fees_eur) if side == "buy" else (gross - fees_eur)
+            cash_row = con.execute(
+                "SELECT balance_eur FROM cash_log ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            new_balance = (float(cash_row["balance_eur"]) if cash_row else 0.0) + delta
+            con.execute(
+                "INSERT INTO cash_log (created_at, balance_eur) VALUES (?, ?)",
+                (now, new_balance),
+            )
         return cur.lastrowid
 
 

@@ -18,6 +18,7 @@ def render():
 def _render_booking_form():
     st.caption("Ein Kauf bildet den durchschnittlichen Einstand inklusive Gebühren neu. "
                "Ein Verkauf reduziert nur die Menge; der Einstand pro Stück bleibt erhalten.")
+    has_cash = db.latest_cash_balance() is not None
     with st.form("trade_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         side_label = c1.radio("Art", ["Kauf", "Verkauf"], horizontal=True)
@@ -33,6 +34,13 @@ def _render_booking_form():
         category = c7.selectbox("Konto", categories)
         fees = c8.number_input("Gebühren (€)", min_value=0.0, format="%.2f")
         note = c9.text_input("Notiz (optional)")
+        fund_from_cash = st.checkbox(
+            "💶 Aus meinem Bank-Cash bezahlt/vereinnahmt", disabled=not has_cash,
+            help="Bucht Menge×Preis±Gebühren zusätzlich als Cash-Bewegung, damit ein "
+                 "aus dem getrackten Kontostand bezahlter Kauf das Gesamtvermögen nicht "
+                 "künstlich erhöht (Asset-Seite steigt, Cash-Seite bleibt sonst gleich).")
+        if not has_cash:
+            st.caption("Lege zuerst unter **Cash** einen Kontostand an, um Trades daraus zu finanzieren.")
         submit = st.form_submit_button("Buchung speichern", type="primary")
     if submit:
         if not symbol:
@@ -40,11 +48,20 @@ def _render_booking_form():
             return
         try:
             db.record_trade(symbol, asset_type, "buy" if side_label == "Kauf" else "sell",
-                            quantity, price, category, fees, trade_date.isoformat(), note)
+                            quantity, price, category, fees, trade_date.isoformat(), note,
+                            fund_from_cash=fund_from_cash)
         except ValueError as exc:
             st.error(str(exc))
         else:
-            st.success("Buchung gespeichert und Position aktualisiert.")
+            if fund_from_cash:
+                new_balance = db.latest_cash_balance()
+                st.success(f"Buchung gespeichert, Position aktualisiert und Kontostand "
+                           f"angepasst auf {new_balance:,.2f} €.")
+                if new_balance is not None and new_balance < 0:
+                    st.warning("Der berechnete Kontostand ist negativ - Trade prüfen oder "
+                               "Kontostand unter Cash korrigieren.")
+            else:
+                st.success("Buchung gespeichert und Position aktualisiert.")
 
 
 def _render_history():

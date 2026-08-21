@@ -66,6 +66,50 @@ def test_record_trade_updates_position_and_journal(tmp_db):
     assert len(tmp_db.list_transactions("stock")) == 3
 
 
+def test_record_trade_without_cash_flag_leaves_cash_untouched(tmp_db):
+    """Regression: fund_from_cash ist standardmäßig False - ein normaler
+    Trade darf cash_log nicht anfassen (z.B. wenn aus externem Broker-Cash
+    bezahlt, das nicht im Bank-Kontostand steckt)."""
+    tmp_db.add_cash_entry(1000.0)
+    tmp_db.record_trade("NVDA", "stock", "buy", 2, 100, "Depot", 4, "2026-07-01")
+    assert len(tmp_db.list_cash_entries()) == 1
+    assert tmp_db.latest_cash_balance() == 1000.0
+
+
+def test_record_trade_funds_from_cash_on_buy(tmp_db):
+    tmp_db.add_cash_entry(1000.0)
+    tmp_db.record_trade("NVDA", "stock", "buy", 2, 100, "Depot", fees_eur=4,
+                        trade_date="2026-07-01", fund_from_cash=True)
+    # 1000 - (2*100 + 4) = 796
+    assert tmp_db.latest_cash_balance() == 796.0
+    assert len(tmp_db.list_cash_entries()) == 2
+
+
+def test_record_trade_funds_from_cash_on_sell(tmp_db):
+    tmp_db.add_cash_entry(1000.0)
+    tmp_db.record_trade("NVDA", "stock", "buy", 2, 100, "Depot", trade_date="2026-07-01")
+    tmp_db.record_trade("NVDA", "stock", "sell", 1, 150, "Depot", fees_eur=1,
+                        trade_date="2026-07-02", fund_from_cash=True)
+    # 1000 + (1*150 - 1) = 1149
+    assert tmp_db.latest_cash_balance() == 1149.0
+
+
+def test_record_trade_funds_from_cash_no_prior_balance(tmp_db):
+    """Ohne vorherigen cash_log-Eintrag wird 0.0 als Basis angenommen."""
+    tmp_db.record_trade("NVDA", "stock", "buy", 2, 100, "Depot", fees_eur=4,
+                        trade_date="2026-07-01", fund_from_cash=True)
+    assert tmp_db.latest_cash_balance() == -204.0
+    assert len(tmp_db.list_cash_entries()) == 1
+
+
+def test_record_trade_funds_from_cash_appends_cumulatively(tmp_db):
+    tmp_db.add_cash_entry(1000.0)
+    tmp_db.record_trade("NVDA", "stock", "buy", 1, 100, "Depot", trade_date="2026-07-01", fund_from_cash=True)
+    tmp_db.record_trade("AAPL", "stock", "buy", 1, 50, "Depot", trade_date="2026-07-02", fund_from_cash=True)
+    assert tmp_db.latest_cash_balance() == 850.0
+    assert len(tmp_db.list_cash_entries()) == 3
+
+
 def test_agent_run_log(tmp_db):
     tmp_db.log_agent_run("NVDA", "asset", 72, "Halten", 0.03, {"foo": "bar"})
     runs = tmp_db.list_agent_runs()
