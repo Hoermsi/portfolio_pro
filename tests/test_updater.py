@@ -105,3 +105,52 @@ def test_swap_script_robocopy_forces_same_files(tmp_path, monkeypatch):
     assert "robocopy" in content.lower()
     assert "requirements.txt" in content
     assert "runtime" in content
+
+
+def test_swap_script_writes_diagnostic_log(tmp_path, monkeypatch):
+    """Jeder Schritt muss protokolliert werden - sonst ist ein Fehlschlag des
+    detached laufenden Skripts von aussen nicht diagnostizierbar."""
+    from core import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    install = tmp_path / "app"
+    install.mkdir()
+    path = updater._write_swap_script(src, install, None)
+    content = path.read_text(encoding="utf-8")
+    assert "apply_update.log" in content
+    assert content.count(">> %LOG%") >= 2  # mindestens robocopy- und Abschluss-Zeile
+
+
+def test_read_last_update_log_none_when_missing(tmp_path, monkeypatch):
+    from core import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    assert updater.read_last_update_log() is None
+
+
+def test_read_last_update_log_returns_content(tmp_path, monkeypatch):
+    from core import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    updater._swap_log_path().parent.mkdir(parents=True, exist_ok=True)
+    updater._swap_log_path().write_text("robocopy beendet, exit code 1", encoding="utf-8")
+    assert "exit code 1" in updater.read_last_update_log()
+
+
+def test_launch_detached_falls_back_without_breakaway(tmp_path, monkeypatch):
+    """Erlaubt das Job-Object kein Breakaway (CreateProcess schlaegt fehl),
+    muss ein zweiter Versuch ohne das Flag greifen statt die App abstuerzen
+    zu lassen."""
+    from core import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    calls = []
+    breakaway = getattr(updater.subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+
+    def _fake_popen(args, cwd=None, creationflags=0, close_fds=True):
+        calls.append(creationflags)
+        if breakaway and (creationflags & breakaway):
+            raise OSError("Breakaway vom Job nicht erlaubt")
+        return object()
+
+    monkeypatch.setattr(updater.subprocess, "Popen", _fake_popen)
+    updater._launch_detached(tmp_path / "dummy.bat")
+    assert len(calls) == 2  # erster Versuch (mit Breakaway) schlaegt fehl, zweiter greift

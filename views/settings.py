@@ -225,6 +225,14 @@ def _render_updates():
     st.markdown("### Programm-Updates")
     st.metric("Installierte Version", f"v{APP_VERSION}")
 
+    log = updater.read_last_update_log()
+    if log:
+        with st.expander("Protokoll des letzten Update-Versuchs"):
+            st.caption("Läuft nach einem Klick auf „Jetzt aktualisieren“ losgelöst im "
+                       "Hintergrund weiter - falls die Version danach unverändert bleibt, "
+                       "zeigt dieses Protokoll, bei welchem Schritt es hängen geblieben ist.")
+            st.code(log, language=None)
+
     if not updater.is_configured():
         st.info("Es ist noch kein Update-Kanal hinterlegt. Der Entwickler trägt dazu "
                 "das GitHub-Repository in `core/updater.py` (`GITHUB_REPO`) ein.")

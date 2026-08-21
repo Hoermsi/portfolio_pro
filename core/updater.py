@@ -134,12 +134,27 @@ def _swap_script_path() -> Path:
     return _updates_dir() / "apply_update.bat"
 
 
+def _swap_log_path() -> Path:
+    return _updates_dir() / "apply_update.log"
+
+
+def read_last_update_log() -> str | None:
+    """Protokoll des letzten Swap-Vorgangs (Diagnose in den Einstellungen),
+    falls ein Update je versucht wurde."""
+    p = _swap_log_path()
+    return p.read_text(encoding="utf-8", errors="replace") if p.exists() else None
+
+
 def _write_swap_script(source_dir: Path, install_dir: Path, relaunch: Path | None) -> Path:
     """Erzeugt eine .bat, die nach Beenden der App den Code ersetzt und neu startet.
 
     - wartet, bis der aktuelle Prozess beendet ist (robocopy sperrt sonst Dateien),
     - spiegelt `source_dir` nach `install_dir` (ohne den Nutzerdaten-Ordner),
-    - startet danach optional den Launcher neu.
+    - startet danach optional den Launcher neu,
+    - protokolliert jeden Schritt in apply_update.log (die .bat läuft detached
+      und unsichtbar - ohne Log ist ein Fehlschlag von außen nicht diagnostizierbar,
+      genau das hatte einen Bugreport erst nach Reproduktion auf einer zweiten
+      Maschine aufgeklärt).
     """
     pid = os.getpid()
     relaunch_line = f'start "" "{relaunch}"' if relaunch else "rem kein Neustart konfiguriert"
@@ -147,7 +162,10 @@ def _write_swap_script(source_dir: Path, install_dir: Path, relaunch: Path | Non
     # (install_dir ist der Code-Ordner <install>/app). Nur dort läuft pip nach.
     runtime_py = install_dir.parent / "runtime" / "python" / "python.exe"
     requirements = install_dir / "requirements.txt"
+    log = _swap_log_path()
     script = f"""@echo off
+set LOG="{log}"
+echo [%date% %time%] Update-Skript gestartet, warte auf Prozessende (PID {pid}) > %LOG%
 rem Warten, bis Portfolio Pro (PID {pid}) beendet ist
 :waitloop
 tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL
@@ -155,6 +173,7 @@ if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto waitloop
 )
+echo [%date% %time%] Prozess beendet, spiegle Code ... >> %LOG%
 rem Code spiegeln (Nutzerdaten liegen getrennt und werden nicht angefasst).
 rem /IS erzwingt das Kopieren auch bei aus Robocopy-Sicht "gleichen" Dateien
 rem (gleiche Groesse + gleicher Zeitstempel) - ohne dieses Flag ueberspringt
@@ -163,8 +182,13 @@ rem gleich lang sind und die im Release-ZIP gespeicherten Zeitstempel nicht
 rem neuer als die installierten Dateien sind (reproduziert: Update von 1.3.0
 rem auf 1.3.1 aktualisierte fast alles, liess core/version.py aber unveraendert).
 robocopy "{source_dir}" "{install_dir}" /MIR /IS /IT /XD .git __pycache__ .pytest_cache >NUL
+echo [%date% %time%] robocopy beendet, exit code %errorlevel% >> %LOG%
 rem Neue/geänderte Abhängigkeiten in die gebündelte Laufzeit nachinstallieren
-if exist "{runtime_py}" if exist "{requirements}" "{runtime_py}" -m pip install -r "{requirements}" >NUL 2>&1
+if exist "{runtime_py}" if exist "{requirements}" (
+    "{runtime_py}" -m pip install -r "{requirements}" >NUL 2>&1
+    echo [%date% %time%] pip install beendet >> %LOG%
+)
+echo [%date% %time%] Update abgeschlossen >> %LOG%
 {relaunch_line}
 """
     path = _swap_script_path()
@@ -183,12 +207,33 @@ def apply_update(asset_url: str, version: str, install_dir: Path | None = None,
     zip_path = download_update(asset_url, version)
     source_dir = stage_update(zip_path, version)
     script = _write_swap_script(source_dir, install_dir, relaunch)
-    # Detached starten, damit er den Beenden der App überlebt.
-    creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-        subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen(["cmd", "/c", str(script)], cwd=str(config.DATA_DIR),
-                     creationflags=creationflags, close_fds=True)
+    _launch_detached(script)
     return script
+
+
+def _launch_detached(script: Path):
+    """Startet die Swap-.bat komplett losgelöst vom laufenden Prozess.
+
+    Die als PyInstaller-EXE gebaute App (PortfolioPro.exe -> Launcher startet
+    Streamlit als Kindprozess) kann ihre Kindprozesse in ein Windows-Job-Object
+    stecken, das beim Beenden ALLE zugehörigen Prozesse mit-killt - auch einen
+    per DETACHED_PROCESS gestarteten, wenn er nicht explizit aus dem Job
+    ausbricht. Ohne CREATE_BREAKAWAY_FROM_JOB kann der Swap-Helfer dadurch
+    sterben, bevor robocopy fertig ist: die App schliesst sich sichtbar, aber
+    der Code-Austausch findet nie statt (reproduziertes Fehlerbild: "Update
+    abgeschlossen", Version bleibt trotzdem unveraendert).
+    """
+    base_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+    try:
+        subprocess.Popen(["cmd", "/c", str(script)], cwd=str(config.DATA_DIR),
+                         creationflags=base_flags | breakaway, close_fds=True)
+    except OSError:
+        # Manche Jobs erlauben kein Breakaway (CreateProcess schlägt dann
+        # komplett fehl statt das Flag zu ignorieren) - ohne erneut versuchen.
+        subprocess.Popen(["cmd", "/c", str(script)], cwd=str(config.DATA_DIR),
+                         creationflags=base_flags, close_fds=True)
 
 
 def shutdown_app():
