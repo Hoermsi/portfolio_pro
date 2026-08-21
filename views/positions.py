@@ -93,6 +93,10 @@ def render_positions_table(asset_type: str) -> None:
         if choice != "🌐 Alle Konten":
             vals = [v for v in all_vals if v.position.category == choice]
 
+    if asset_type == "crypto":
+        # Standardmäßig nach Wert (= Gewichtung im Depot) absteigend sortiert.
+        vals = sorted(vals, key=lambda v: v.value_eur or 0.0, reverse=True)
+
     portfolio_value = total_value(vals)
     cost_total = sum(v.cost_basis for v in vals if v.has_cost)
     gain_total = portfolio_value - cost_total if cost_total else None
