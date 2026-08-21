@@ -43,8 +43,9 @@ SPECIALISTS = {
         "name": "Risiko-Manager",
         "emoji": "🛡️",
         "system": _COMMON + (
-            " Fachgebiet: Risikomanagement. Bewerte Volatilität, Max Drawdown, Sharpe "
-            "Ratio sowie - falls vorhanden - die Positionsgröße im Portfolio-Kontext "
+            " Fachgebiet: Risikomanagement. Bewerte Volatilität, Max Drawdown, "
+            "risikoadjustierte Rendite (rf=0, keine vollständige Sharpe Ratio) "
+            "sowie - falls vorhanden - die Positionsgröße im Portfolio-Kontext "
             "(Klumpenrisiko). Hier bedeutet ein hoher score: Risiko gut vertretbar; "
             "ein niedriger score: Risiko hoch oder Position zu groß."
         ),

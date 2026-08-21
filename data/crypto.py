@@ -11,6 +11,7 @@ import time
 import pandas as pd
 import requests
 
+from core import db
 from core.cache import ttl_cache
 
 API = "https://api.coingecko.com/api/v3"
@@ -55,8 +56,15 @@ def _get(path: str, params: dict | None = None):
 
 def resolve_id(symbol: str) -> str | None:
     """Symbol -> CoinGecko-ID. Erfolge werden dauerhaft gecacht, Fehlschläge
-    nur kurz (damit ein Rate-Limit-Treffer den Coin nicht lange blockiert)."""
+    nur kurz (damit ein Rate-Limit-Treffer den Coin nicht lange blockiert).
+
+    Eine vom Nutzer bestätigte ID (assets.coingecko_id, siehe db.set_coingecko_id)
+    hat Vorrang vor SYMBOL_TO_ID und der automatischen Suche - für mehrdeutige
+    Symbole, bei denen "erstbester Treffer" den falschen Coin auflösen könnte."""
     symbol = symbol.strip().upper()
+    pinned = db.get_asset_coingecko_id(symbol, "crypto")
+    if pinned:
+        return pinned
     if symbol in SYMBOL_TO_ID:
         return SYMBOL_TO_ID[symbol]
     with _lock:

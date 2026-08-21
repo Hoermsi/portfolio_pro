@@ -1,4 +1,5 @@
-"""Backtest: hypothetische Rendite der heutigen Bestände ab einem Kaufdatum."""
+"""Bestands-Rückrechnung: hypothetische Rendite der heutigen Bestände ab einem
+Kaufdatum - kein regelbasierter Backtest mit Handelsentscheidungen über die Zeit."""
 from datetime import date, timedelta
 
 import pandas as pd
@@ -42,8 +43,10 @@ def _gv_style(v):
 
 
 def render():
-    components.page_header("Analysen", "Backtest",
-                           "Was wäre deine Rendite, wenn du deine heutigen Bestände am Tag X gekauft hättest?")
+    components.page_header("Analysen", "Bestands-Rückrechnung",
+                           "Was wäre deine Rendite, wenn du deine heutigen Bestände am Tag X gekauft hättest? "
+                           "Nimmt deine heutigen Stückzahlen und rechnet sie auf einen früheren Kaufzeitpunkt "
+                           "zurück - kein regelbasierter Backtest mit Handelsentscheidungen.")
 
     c1, c2, c3 = st.columns([1.3, 1, 1])
     scope_label = c1.radio("Umfang", list(_SCOPES.keys()), horizontal=True, key="bt_scope")
@@ -63,7 +66,7 @@ def render():
                "Große Coins reichen mehrere Jahre zurück; sehr neue oder kleine Coins "
                "evtl. kürzer – ohne Kurs am Kaufdatum werden sie übersprungen.")
 
-    if not st.button("▶️ Backtest ausführen", type="primary"):
+    if not st.button("▶️ Rückrechnung ausführen", type="primary"):
         return
 
     with st.spinner("Lade historische Kurse …"):

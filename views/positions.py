@@ -171,6 +171,19 @@ def render_positions_table(asset_type: str) -> None:
             db.save_position(pos.symbol, asset_type, qty, buy,
                              category=pos.category, source=pos.source)
             st.rerun()
+
+        if asset_type == "crypto":
+            c4, c5 = st.columns([3, 1])
+            current_id = crypto_data.resolve_id(pos.symbol) or ""
+            cid = c4.text_input(
+                "CoinGecko-ID", value=current_id, key=f"edit_cgid_{asset_type}",
+                help="Bei mehrdeutigen Symbolen (z.B. kleine Tokens) kann die automatische "
+                     "Zuordnung den falschen Coin treffen. Hier die korrekte ID von "
+                     "coingecko.com eintragen (Teil der URL, z.B. 'raydium').")
+            if c5.button("Übernehmen", key=f"edit_cgid_save_{asset_type}", width="stretch") and cid.strip():
+                db.set_coingecko_id(pos.symbol, "crypto", cid.strip())
+                st.success(f"CoinGecko-ID für {pos.symbol} gespeichert.")
+                st.rerun()
         st.divider()
         confirm = st.checkbox("Ich möchte diese Position endgültig löschen.", key=f"edit_confirm_{asset_type}")
         if st.button("Position löschen", key=f"edit_del_{asset_type}", disabled=not confirm):

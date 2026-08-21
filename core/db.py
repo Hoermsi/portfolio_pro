@@ -266,6 +266,25 @@ def upsert_asset(con, symbol: str, asset_type: str, name: str = "",
     return cur.lastrowid
 
 
+def get_asset_coingecko_id(symbol: str, asset_type: str) -> str | None:
+    """Vom Nutzer bestätigte CoinGecko-ID für ein Symbol, falls hinterlegt
+    (siehe set_coingecko_id) - None wenn nicht gesetzt oder Asset unbekannt."""
+    with _connect() as con:
+        row = con.execute(
+            "SELECT coingecko_id FROM assets WHERE symbol = ? AND asset_type = ?",
+            (symbol.strip().upper(), asset_type),
+        ).fetchone()
+    cid = row["coingecko_id"] if row else None
+    return cid or None
+
+
+def set_coingecko_id(symbol: str, asset_type: str, coingecko_id: str):
+    """Bestätigte CoinGecko-ID für ein Symbol hinterlegen (überschreibt bei
+    mehrdeutigen Symbolen die automatische 'erstbester Treffer'-Auflösung)."""
+    with _connect() as con:
+        upsert_asset(con, symbol, asset_type, coingecko_id=coingecko_id.strip())
+
+
 def save_position(symbol: str, asset_type: str, quantity: float, buy_price_eur: float,
                   category: str = "Standard", source: str = "manuell", name: str = ""):
     with _connect() as con:

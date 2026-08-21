@@ -2,6 +2,24 @@
 from data import crypto
 
 
+def test_resolve_id_prefers_pinned_coingecko_id(tmp_db, monkeypatch):
+    """Eine bestätigte CoinGecko-ID (db.set_coingecko_id) hat Vorrang vor
+    SYMBOL_TO_ID und der automatischen Suche - für mehrdeutige Symbole."""
+    db = tmp_db
+    db.set_coingecko_id("RAY", "crypto", "raydium")
+
+    def boom(*a, **k):
+        raise AssertionError("Suche darf bei gepinnter ID nicht aufgerufen werden")
+
+    monkeypatch.setattr(crypto, "_get", boom)
+    assert crypto.resolve_id("RAY") == "raydium"
+
+
+def test_resolve_id_falls_back_without_pin(tmp_db):
+    """Ohne gepinnte ID greift weiterhin die hardcodierte SYMBOL_TO_ID-Map."""
+    assert crypto.resolve_id("BTC") == "bitcoin"
+
+
 def test_get_market_data_batch_maps_by_id(monkeypatch):
     monkeypatch.setattr(crypto, "resolve_id", lambda s: {"BTC": "bitcoin", "ETH": "ethereum"}.get(s))
 

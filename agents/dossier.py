@@ -27,7 +27,7 @@ def build_asset_dossier(symbol: str, asset_type: str) -> dict | None:
         return None
 
     tech = technical.summarize(df)
-    risk = risk_analysis.asset_risk(df)
+    risk = risk_analysis.asset_risk(df, asset_type=asset_type)
     news = news_data.get_news(symbol, asset_type)
 
     # Positions-Kontext, falls das Asset im Portfolio liegt

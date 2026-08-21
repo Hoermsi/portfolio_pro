@@ -104,6 +104,23 @@ def test_market_temperature_renormalizes_missing_indicators():
     assert len(result["breakdown"]) == 1
     assert result["breakdown"][0]["weight_pct"] == pytest.approx(100.0)
     assert len(result["unavailable"]) == 5
+    # Nur 25% der Gesamt-Gewichtung verfuegbar (fear_greed-Gewicht 25 von 100) ->
+    # trotz Score 80 keine "Extreme Gier"-Aussage aus einer einzigen Quelle.
+    assert result["coverage_pct"] == pytest.approx(25.0)
+    assert result["classification"] == "Gier"
+
+
+def test_market_temperature_full_coverage_allows_extreme_classification():
+    readings = {
+        "fear_greed": {"value": 95, "classification": "Extreme Greed"},
+        "mayer": 2.5, "breadth": {"pct_outperforming": 90.0, "sample_size": 45, "btc_change_30d": 3.0},
+        "btc_dominance": {"btc_dominance": 40, "stablecoin_dominance": 4},
+        "meme": {"change_24h_pct": 10.0, "market_cap": 3e10},
+        "stablecoin_dominance": {"btc_dominance": 40, "stablecoin_dominance": 4},
+    }
+    result = market_timing.market_temperature(readings)
+    assert result["coverage_pct"] == pytest.approx(100.0)
+    assert result["classification"] == "Extreme Gier"
 
 
 def test_market_temperature_all_missing_returns_none_score():
@@ -113,6 +130,7 @@ def test_market_temperature_all_missing_returns_none_score():
     assert result["score"] is None
     assert result["breakdown"] == []
     assert len(result["unavailable"]) == 6
+    assert result["coverage_pct"] == 0.0
 
 
 def test_classify_bands():
@@ -121,6 +139,13 @@ def test_classify_bands():
     assert market_timing._classify(50) == "Neutral"
     assert market_timing._classify(70) == "Gier"
     assert market_timing._classify(90) == "Extreme Gier"
+
+
+def test_classify_softens_extreme_below_coverage_threshold():
+    assert market_timing._classify(10, coverage_pct=25.0) == "Angst"
+    assert market_timing._classify(90, coverage_pct=25.0) == "Gier"
+    # An der Schwelle selbst (>= 60%) bleibt die Extrem-Einordnung erlaubt.
+    assert market_timing._classify(90, coverage_pct=60.0) == "Extreme Gier"
 
 
 # --- Aktien-Indikatoren (Rohwerte) ---

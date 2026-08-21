@@ -100,10 +100,13 @@ def build_monthly_pdf(month: date) -> bytes:
     start_val, end_val = _month_performance(month)
     if start_val and end_val and start_val > 0:
         change = end_val - start_val
-        pct = change / start_val * 100
+        pct = performance.month_return_pct(month)
+        if pct is None:
+            pct = change / start_val * 100
         perf_text = (f"Gesamtwert am Monatsanfang: {start_val:,.2f} € · "
                      f"am Monatsende: {end_val:,.2f} € · "
-                     f"Veränderung: {change:+,.2f} € ({pct:+.1f} %).")
+                     f"Wertänderung: {change:+,.2f} € · "
+                     f"kapitalflussbereinigte Rendite: {pct:+.1f} %.")
     else:
         perf_text = ("Für diesen Monat liegen noch nicht genug Verlaufsdaten vor "
                      "(Snapshots entstehen mit jedem Öffnen des Dashboards).")

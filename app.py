@@ -89,7 +89,7 @@ pages = {
     ],
     "Analysen": [
         st.Page(asset_detail.render, title="Markt & Einzelwertanalyse", icon="🔍", url_path="analyse"),
-        st.Page(backtest.render, title="Backtest", icon="⏮️", url_path="backtest"),
+        st.Page(backtest.render, title="Bestands-Rückrechnung", icon="⏮️", url_path="backtest"),
         st.Page(ai_desk.render, title="AI Desk", icon="🧠", url_path="ai-desk"),
         st.Page(ai_portfolio.render, title="KI-Portfolios", icon="🤖", url_path="ki-portfolio"),
     ],

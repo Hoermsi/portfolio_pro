@@ -70,6 +70,8 @@ def summarize(df: pd.DataFrame) -> dict:
     lower_b = _last(ind["Lower_Band"])
     upper_b = _last(ind["Upper_Band"])
     macd_hist = _last(ind["MACD_Hist"])
+    atr = _last(ind["ATR"]) if "ATR" in ind else None
+    atr_pct = round(atr / curr * 100, 2) if atr and curr > 0 else None
     fibs = fib_levels(close)
 
     # Scoring (max 100): Einstiegs-Attraktivität aus technischer Sicht
@@ -102,6 +104,7 @@ def summarize(df: pd.DataFrame) -> dict:
         "lower_band": lower_b,
         "upper_band": upper_b,
         "macd_hist": macd_hist,
+        "atr_pct": atr_pct,
         "fibs": fibs,
         "perf_30d_pct": round(perf_30d, 1) if perf_30d is not None else None,
         "t_score": int(min(100, max(0, score))),
@@ -117,6 +120,7 @@ def summary_text(s: dict) -> str:
         f"MA200: {s['ma200']:.4g}" if s["ma200"] else "MA200: n/a (zu wenig Historie)",
         f"Bollinger: {s['lower_band']:.4g} - {s['upper_band']:.4g}" if s["lower_band"] else "Bollinger: n/a",
         f"MACD-Histogramm: {s['macd_hist']:+.4g}" if s["macd_hist"] is not None else "MACD: n/a",
+        f"ATR (Tagesspanne): {s['atr_pct']:.1f}%" if s.get("atr_pct") is not None else "",
         f"Performance 30 Tage: {s['perf_30d_pct']:+.1f}%" if s["perf_30d_pct"] is not None else "",
         f"Technischer Score: {s['t_score']}/100",
     ]

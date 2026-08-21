@@ -2,21 +2,25 @@
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS = 252
+TRADING_DAYS = 252   # Aktien: Börsenhandelstage/Jahr
+CRYPTO_DAYS = 365    # Krypto handelt durchgehend, auch am Wochenende
 
 
-def asset_risk(df: pd.DataFrame) -> dict:
-    """Volatilität (annualisiert), Max Drawdown, Sharpe (rf=0) aus Tagesdaten."""
+def asset_risk(df: pd.DataFrame, asset_type: str = "stock") -> dict:
+    """Volatilität (annualisiert), Max Drawdown, Risikoadj. Rendite (rf=0) aus
+    Tagesdaten. `asset_type="crypto"` annualisiert mit 365 statt 252 Tagen -
+    mit 252 wären Krypto-Volatilität und -Sharpe systematisch zu niedrig."""
+    days_per_year = CRYPTO_DAYS if asset_type == "crypto" else TRADING_DAYS
     close = df["Close"].dropna()
     if len(close) < 30:
         return {}
     returns = close.pct_change().dropna()
-    vol = float(returns.std() * np.sqrt(TRADING_DAYS) * 100)
+    vol = float(returns.std() * np.sqrt(days_per_year) * 100)
     cummax = close.cummax()
     drawdown = (close / cummax - 1.0)
     max_dd = float(drawdown.min() * 100)
-    mean_annual = float(returns.mean() * TRADING_DAYS)
-    sharpe = float(mean_annual / (returns.std() * np.sqrt(TRADING_DAYS) + 1e-9))
+    mean_annual = float(returns.mean() * days_per_year)
+    sharpe = float(mean_annual / (returns.std() * np.sqrt(days_per_year) + 1e-9))
     return {
         "volatilitaet_pct": round(vol, 1),
         "max_drawdown_pct": round(max_dd, 1),

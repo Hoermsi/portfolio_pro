@@ -223,16 +223,22 @@ def _score_risk_appetite(ratio_pct: float | None) -> tuple[float, str] | None:
     return score, f"{ratio_pct:.1f}% vom Trend"
 
 
-def _classify(score: float) -> str:
+_MIN_COVERAGE_FOR_EXTREME = 60.0
+
+
+def _classify(score: float, coverage_pct: float = 100.0) -> str:
+    """Unter _MIN_COVERAGE_FOR_EXTREME% Datenabdeckung wird "Extreme Angst/Gier"
+    auf "Angst"/"Gier" abgeschwächt - eine "definitive" Extremaussage aus z.B.
+    nur einer von sechs Quellen wäre irreführend."""
     if score < 20:
-        return "Extreme Angst"
+        return "Angst" if coverage_pct < _MIN_COVERAGE_FOR_EXTREME else "Extreme Angst"
     if score < 40:
         return "Angst"
     if score < 60:
         return "Neutral"
     if score < 80:
         return "Gier"
-    return "Extreme Gier"
+    return "Gier" if coverage_pct < _MIN_COVERAGE_FOR_EXTREME else "Extreme Gier"
 
 
 _MARKETS = {
@@ -307,7 +313,11 @@ def market_temperature(readings: dict, market: str = "crypto") -> dict:
         weight_total += weight
 
     if weight_total <= 0:
-        return {"score": None, "classification": "", "breakdown": [], "unavailable": unavailable}
+        return {"score": None, "classification": "", "breakdown": [], "unavailable": unavailable,
+                "coverage_pct": 0.0}
+
+    total_weight = sum(cfg["weights"].values())
+    coverage_pct = round(weight_total / total_weight * 100, 1)
 
     overall = weighted_sum / weight_total
     # Renormierte Gewichte für die Anzeige (Summe der verfügbaren = 100%).
@@ -316,7 +326,8 @@ def market_temperature(readings: dict, market: str = "crypto") -> dict:
 
     return {
         "score": round(overall, 1),
-        "classification": _classify(overall),
+        "classification": _classify(overall, coverage_pct),
         "breakdown": sorted(breakdown, key=lambda r: -r["weight_pct"]),
         "unavailable": unavailable,
+        "coverage_pct": coverage_pct,
     }

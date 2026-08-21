@@ -1,12 +1,15 @@
-"""Backtest: "Was wäre meine Rendite, wenn ich meine heutigen Bestände am Tag X
-gekauft hätte?"
+"""Bestands-Rückrechnung: "Was wäre meine Rendite, wenn ich meine heutigen
+Bestände am Tag X gekauft hätte?"
 
 Nimmt die aktuellen Stückzahlen (über alle Kategorien pro Symbol aggregiert) und
 bewertet sie mit dem historischen Kurs am gewählten Kaufdatum gegen den heutigen
-Kurs. %-Rendite ist fx-unabhängig (gleicher Umrechnungskurs für beide Zeitpunkte);
-€-Summen nutzen den aktuellen fx (Näherung wie bei der Kraken-Einstands-Logik).
-Krypto-Historie ist begrenzt (~365 Tage CoinGecko / ~720 Tage Kraken) - Symbole
-ohne Kurs am Tag X werden übersprungen und gemeldet.
+Kurs. Das ist bewusst KEIN regelbasierter Backtest: es werden keine Kauf-/Verkaufs-
+entscheidungen über die Zeit simuliert, es gibt kein Rebalancing und keine
+Survivorship-Bias-Behandlung - lediglich die heutigen Bestände werden rückwirkend
+bewertet. %-Rendite ist fx-unabhängig (gleicher Umrechnungskurs für beide
+Zeitpunkte); €-Summen nutzen den aktuellen fx (Näherung wie bei der Kraken-
+Einstands-Logik). Krypto-Historie ist begrenzt (~365 Tage CoinGecko / ~720 Tage
+Kraken) - Symbole ohne Kurs am Tag X werden übersprungen und gemeldet.
 """
 from __future__ import annotations
 

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from analysis import risk, technical
 
@@ -21,6 +22,16 @@ def test_indicators_and_score_bounds():
     assert set(s["fibs"].keys()) == {"0%", "23.6%", "38.2%", "50%", "61.8%", "100%"}
     for col in ("MA20", "MA50", "MA200", "RSI", "MACD", "MACD_Hist"):
         assert col in s["df"].columns
+    assert s["atr_pct"] is None   # kein High/Low in der synthetischen Reihe
+
+
+def test_atr_pct_present_with_high_low():
+    df = _synthetic_df()
+    df["High"] = df["Close"] * 1.02
+    df["Low"] = df["Close"] * 0.98
+    s = technical.summarize(df)
+    assert s["atr_pct"] is not None
+    assert s["atr_pct"] > 0
 
 
 def test_rsi_extremes():
@@ -36,6 +47,16 @@ def test_asset_risk():
     assert r["volatilitaet_pct"] > 0
     assert r["max_drawdown_pct"] <= 0
     assert isinstance(r["sharpe"], float)
+
+
+def test_asset_risk_crypto_annualizes_with_365_days():
+    """Krypto handelt durchgehend (365 statt 252 Tage/Jahr) - mit der Aktien-
+    Konstante wären Krypto-Volatilität/Sharpe systematisch zu niedrig."""
+    df = _synthetic_df()
+    r_stock = risk.asset_risk(df, asset_type="stock")
+    r_crypto = risk.asset_risk(df, asset_type="crypto")
+    factor = (risk.CRYPTO_DAYS / risk.TRADING_DAYS) ** 0.5
+    assert r_crypto["volatilitaet_pct"] == pytest.approx(r_stock["volatilitaet_pct"] * factor, abs=0.05)
 
 
 def test_concentration():

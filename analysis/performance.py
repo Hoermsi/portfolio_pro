@@ -35,12 +35,16 @@ def history_df() -> pd.DataFrame | None:
                            values="total_value_eur", aggfunc="last")
     pivot.index = pd.to_datetime(pivot.index)
     pivot = pivot.rename(columns={"stock": "Aktien", "crypto": "Krypto", "cash": "Cash"})
+    pivot = pivot.sort_index()
     for col in ("Aktien", "Krypto", "Cash"):
         if col not in pivot:
             pivot[col] = 0.0
-    pivot["Gesamt"] = (pivot["Aktien"].fillna(0) + pivot["Krypto"].fillna(0)
-                       + pivot["Cash"].fillna(0))
-    return pivot.sort_index()
+        # Fehlender Snapshot (z.B. Kursausfall einer Klasse an einem Tag) wird
+        # mit dem letzten bekannten Wert fortgeschrieben statt als 0 gewertet -
+        # sonst reisst ein einzelner Ausfall die "Gesamt"-Reihe künstlich ein.
+        pivot[col] = pivot[col].ffill().fillna(0)
+    pivot["Gesamt"] = pivot["Aktien"] + pivot["Krypto"] + pivot["Cash"]
+    return pivot
 
 
 def performance_index(history: pd.DataFrame | None = None) -> pd.DataFrame | None:
@@ -71,6 +75,20 @@ def performance_index(history: pd.DataFrame | None = None) -> pd.DataFrame | Non
     if not rows:
         return None
     return pd.DataFrame(rows).set_index("Datum")
+
+
+def month_return_pct(month: date) -> float | None:
+    """Kapitalflussbereinigte Rendite eines Kalendermonats in % (verkettet aus
+    den Tagesrenditen von performance_index()) - für den Monatsreport, damit
+    eine Einzahlung nicht als Performance erscheint. None bei zu kurzer Historie."""
+    idx = performance_index()
+    if idx is None:
+        return None
+    mask = (idx.index.year == month.year) & (idx.index.month == month.month)
+    daily_returns = idx.loc[mask, "Rendite"]
+    if daily_returns.empty:
+        return None
+    return float((1.0 + daily_returns).prod() - 1.0) * 100.0
 
 
 def benchmark_series(symbol: str, days: int = 3650) -> pd.Series | None:

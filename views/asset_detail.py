@@ -53,15 +53,20 @@ def render():
         return
 
     tech = technical.summarize(df)
-    risk = risk_analysis.asset_risk(df)
+    risk = risk_analysis.asset_risk(df, asset_type=at)
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Kurs", f"{tech['kurs']:,.4g} {currency}")
     m2.metric("RSI (14)", f"{tech['rsi']:.0f}")
     m3.metric("Technik-Score", f"{tech['t_score']}/100")
     if risk:
         m4.metric("Volatilität p.a.", f"{risk['volatilitaet_pct']:.0f}%")
         m5.metric("Max Drawdown", f"{risk['max_drawdown_pct']:.0f}%")
+    m6.metric("ATR% (Tagesspanne)",
+             f"{tech['atr_pct']:.1f}%" if tech.get("atr_pct") is not None else "—",
+             help="Durchschnittliche Tages-Schwankungsbreite (Average True Range) "
+                  "relativ zum Kurs - Orientierung für Stop-/Positionsgrößen. "
+                  "Für Krypto derzeit nicht verfügbar (keine Intraday-High/Low-Daten).")
 
     components.render_price_chart(tech["df"], tech["fibs"], key=f"price_{symbol}_{at}")
 
@@ -182,6 +187,12 @@ def _render_market_temperature(market: str):
         f"<span style='color:{color}'>{temp['classification']} — {temp['score']:.0f}/100</span>",
         unsafe_allow_html=True,
     )
+    coverage = temp["coverage_pct"]
+    if coverage < 100:
+        st.caption(f"📊 {coverage:.0f}% der Gewichtung verfügbar "
+                   f"({len(temp['breakdown'])} von {len(temp['breakdown']) + len(temp['unavailable'])} Indikatoren)."
+                   + (" Bei geringer Abdeckung wird keine „Extreme“-Einordnung ausgegeben."
+                      if coverage < 60 else ""))
     if market == "crypto":
         if coinbase_rank:
             st.warning(f"📱 Coinbase auf Platz {coinbase_rank} der Gratis-Charts "
