@@ -145,6 +145,13 @@ CREATE TABLE IF NOT EXISTS watchlist (
     created_at TEXT,
     UNIQUE (symbol, asset_type)
 );
+CREATE TABLE IF NOT EXISTS onchain_history (
+    id INTEGER PRIMARY KEY,
+    metric TEXT NOT NULL,
+    d TEXT NOT NULL,
+    value REAL NOT NULL,
+    UNIQUE (metric, d)
+);
 """
 
 
@@ -561,6 +568,49 @@ def list_sentiment(indicator: str | None = None, days: int | None = None) -> lis
     with _connect() as con:
         rows = con.execute(q, params).fetchall()
     return [dict(r) for r in rows]
+
+
+# On-Chain-Historie (BTC MVRV/Puell/Mayer/STH-MVRV) - separat von sentiment_history,
+# weil die Quelle (bitcoin-data.com) ein hartes Limit von 10 Anfragen/Stunde hat: die
+# Vollhistorie wird einmalig geladen und lokal gehalten statt bei jedem Seitenaufruf
+# neu abgefragt (siehe data/onchain.py).
+
+def save_onchain(metric: str, rows: list[dict]):
+    """rows: [{"d": "YYYY-MM-DD", "value": float}, ...] - Upsert pro (metric, d)."""
+    if not rows:
+        return
+    with _connect() as con:
+        con.executemany(
+            "INSERT INTO onchain_history (metric, d, value) VALUES (?, ?, ?) "
+            "ON CONFLICT (metric, d) DO UPDATE SET value = excluded.value",
+            [(metric, r["d"], float(r["value"])) for r in rows],
+        )
+
+
+def list_onchain(metric: str, days: int | None = None) -> list[dict]:
+    q = "SELECT d, value FROM onchain_history WHERE metric = ?"
+    params: list = [metric]
+    if days is not None:
+        q += " AND d >= ?"
+        params.append((date.today() - timedelta(days=days)).isoformat())
+    q += " ORDER BY d"
+    with _connect() as con:
+        rows = con.execute(q, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def onchain_bootstrapped(metric: str) -> bool:
+    """True, sobald für die Metrik schon einmal Vollhistorie geladen wurde -
+    verhindert einen erneuten teuren Bootstrap-Request nach einem Neustart."""
+    with _connect() as con:
+        row = con.execute(
+            "SELECT 1 FROM meta WHERE key = ?", (f"onchain_bootstrap:{metric}",)
+        ).fetchone()
+    return row is not None
+
+
+def mark_onchain_bootstrapped(metric: str):
+    set_meta(f"onchain_bootstrap:{metric}", datetime.now().isoformat(timespec="seconds"))
 
 
 # --- AGENTEN-HISTORIE ---

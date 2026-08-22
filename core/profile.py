@@ -4,6 +4,7 @@ Eigenes core-Modul (statt views/settings), damit agents/* und analysis/* das
 Profil ohne Import aus der View-Schicht laden können.
 """
 import json
+from datetime import datetime
 
 from core import db
 
@@ -153,3 +154,135 @@ def save_ladder_config(market: str, sell: list[float], buy: list[float]):
     db.set_meta(f"cycle_ladder_{market}", json.dumps({
         "sell": clamp(sell), "buy": clamp(buy),
     }))
+
+
+def validate_ladder_stages(sell: list[float], buy: list[float]) -> list[str]:
+    """Prüft die Stufen-Reihenfolge, BEVOR gespeichert wird - leer = gültig.
+    Streng aufsteigend/absteigend (gleiche Nachbarwerte machen eine Stufe
+    unerreichbar) und keine Überlappung von Kauf-/Verkaufszone: sonst baut
+    render_ladder_gauge() nicht-monotone Farbbänder (edges müssen aufsteigend
+    sein) und die "Stufe 1/2/3"-Beschriftung neben dem Barometer entspricht
+    nicht mehr dem, was der sortierte Gauge tatsächlich zeigt."""
+    problems = []
+    if len(sell) != 3 or len(buy) != 3:
+        return ["Es werden genau 3 Verkaufs- und 3 Kauf-Stufen erwartet."]
+    if not (sell[0] < sell[1] < sell[2]):
+        problems.append("Verkaufs-Stufen müssen streng aufsteigend sein (Stufe 1 < 2 < 3).")
+    if not (buy[0] > buy[1] > buy[2]):
+        problems.append("Kauf-Stufen müssen streng absteigend sein (Stufe 1 > 2 > 3).")
+    if max(buy) >= min(sell):
+        problems.append(f"Kauf- und Verkaufs-Zone überschneiden sich (höchste Kauf-Schwelle "
+                        f"{max(buy):.0f} muss unter der niedrigsten Verkaufs-Schwelle "
+                        f"{min(sell):.0f} liegen).")
+    return problems
+
+
+# --- ZYKLUS-FORTSCHRITT: Sperrklinke gegen die zustandslose Leiter ---
+#
+# market_timing.active_ladder_tier() ist bewusst rein (kein Gedächtnis): fällt
+# der Score von 85 zurück auf 60, sackt die "aktive Stufe" von 3 auf 0 - ohne
+# zu wissen, ob der Nutzer inzwischen verkauft hat. Diese Sperrklinke hält den
+# höchsten je erreichten Stand fest, bis der Nutzer selbst zurücksetzt (z.B.
+# nach einem neuen Zyklus-Tief, wenn wieder aufgebaut wird) - "reached_tier"
+# fällt NIE automatisch zurück.
+
+_DEFAULT_CYCLE_PROGRESS = {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {}}
+_MAX_LOG_ENTRIES = 50
+
+
+def cycle_progress(market: str) -> dict:
+    """{"reached_tier": 0-3, "executed_pct": 0-100, "log": [{"at","tier",
+    "executed_pct","note"}, ...], "basis": {"SYMBOL": menge, ...}} - sichere
+    Standardwerte bei fehlendem/kaputtem Meta-Eintrag. `basis` ist der beim
+    ersten Erreichen von Stufe 1 eingefrorene Ausgangsbestand des aktuellen
+    Zyklus (siehe advance_cycle_tier()) - Grundlage für exit_ranking.sell_list()'s
+    Restmengen-Berechnung in späteren Stufen."""
+    raw = db.get_meta(f"cycle_progress_{market}")
+    try:
+        values = json.loads(raw) if raw else {}
+        if not isinstance(values, dict):
+            values = {}
+    except (json.JSONDecodeError, TypeError):
+        values = {}
+    out = dict(_DEFAULT_CYCLE_PROGRESS)
+    out.update({k: values[k] for k in _DEFAULT_CYCLE_PROGRESS if k in values})
+    try:
+        out["reached_tier"] = min(3, max(0, int(out["reached_tier"])))
+    except (TypeError, ValueError):
+        out["reached_tier"] = 0
+    try:
+        out["executed_pct"] = min(100.0, max(0.0, float(out["executed_pct"])))
+    except (TypeError, ValueError):
+        out["executed_pct"] = 0.0
+    if not isinstance(out["log"], list):
+        out["log"] = []
+    if isinstance(out["basis"], dict):
+        cleaned = {}
+        for sym, qty in out["basis"].items():
+            try:
+                qty = float(qty)
+            except (TypeError, ValueError):
+                continue
+            if qty > 0:
+                cleaned[str(sym).upper()] = qty
+        out["basis"] = cleaned
+    else:
+        out["basis"] = {}
+    return out
+
+
+def _save_cycle_progress(market: str, progress: dict):
+    db.set_meta(f"cycle_progress_{market}", json.dumps(progress))
+
+
+def advance_cycle_tier(market: str, tier: int, note: str = "",
+                       basis: dict[str, float] | None = None) -> dict:
+    """Hebt reached_tier auf max(bisheriger Stand, tier) an - fällt nie von
+    selbst zurück, auch wenn der Score später wieder sinkt. Kein Effekt (aber
+    kein Fehler), wenn `tier` den bisherigen Stand nicht überschreitet.
+
+    Beim ERSTEN Übergang von Stufe 0 auf >=1 wird `basis` (Symbol->Menge,
+    typischerweise exit_ranking.held_symbols()) als Ausgangsbestand des
+    aktuellen Zyklus eingefroren - Grundlage für exit_ranking.sell_list()'s
+    Restmengen-Berechnung in Folgestufen. Spätere Übergänge (1->2, 2->3)
+    überschreiben eine einmal gesetzte Basis NICHT."""
+    progress = cycle_progress(market)
+    tier = min(3, max(0, int(tier)))
+    if tier > progress["reached_tier"]:
+        if progress["reached_tier"] == 0 and not progress["basis"] and basis:
+            progress["basis"] = {str(k).upper(): float(v) for k, v in basis.items() if v}
+        progress["reached_tier"] = tier
+        progress["log"] = ([{"at": _now(), "tier": tier, "note": note}] + progress["log"])[:_MAX_LOG_ENTRIES]
+        _save_cycle_progress(market, progress)
+    return progress
+
+
+def mark_cycle_executed(market: str, executed_pct: float, note: str = "") -> dict:
+    """Trägt ein, wie viel Prozent der aktuellen Verkaufsstufe der Nutzer
+    tatsächlich ausgeführt hat - rein informativ (wie das ganze Zyklus-
+    Feature), die App verkauft nie selbst."""
+    progress = cycle_progress(market)
+    progress["executed_pct"] = min(100.0, max(0.0, float(executed_pct)))
+    progress["log"] = ([{"at": _now(), "executed_pct": progress["executed_pct"], "note": note}]
+                       + progress["log"])[:_MAX_LOG_ENTRIES]
+    _save_cycle_progress(market, progress)
+    return progress
+
+
+def reset_cycle_progress(market: str, note: str = "Neuer Zyklus") -> dict:
+    """Setzt reached_tier/executed_pct explizit zurück - die einzige Möglich-
+    keit, die Sperrklinke zu lösen (z.B. nach einem Zyklus-Tief, wenn wieder
+    aufgebaut wird). Muss der Nutzer bewusst auslösen, passiert nie automatisch.
+    Das Log bleibt erhalten (Reset wird selbst als Eintrag angehängt), damit
+    die Historie über mehrere Zyklen hinweg nachvollziehbar bleibt."""
+    progress = cycle_progress(market)
+    progress["reached_tier"] = 0
+    progress["executed_pct"] = 0.0
+    progress["basis"] = {}
+    progress["log"] = ([{"at": _now(), "reset": True, "note": note}] + progress["log"])[:_MAX_LOG_ENTRIES]
+    _save_cycle_progress(market, progress)
+    return progress
+
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")

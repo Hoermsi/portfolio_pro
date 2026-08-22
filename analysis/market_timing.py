@@ -255,6 +255,14 @@ _MARKETS = {
             "meme": "Meme-Coin-Momentum (24h)",
             "stablecoin_dominance": "Stablecoin-Dominanz",
         },
+        "horizons": {
+            "fear_greed": "Momentanwert",
+            "mayer": "Verhältnis zum 200-Tage-Durchschnitt",
+            "breadth": "30-Tage-Fenster",
+            "btc_dominance": "Momentanwert",
+            "meme": "24-Stunden-Fenster",
+            "stablecoin_dominance": "Momentanwert",
+        },
         "scorers": {
             "fear_greed": _score_fear_greed, "mayer": _score_mayer,
             "breadth": _score_breadth, "btc_dominance": _score_btc_dominance,
@@ -269,6 +277,12 @@ _MARKETS = {
             "breadth": "Marktbreite (RSP/SPY)",
             "risk_appetite": "Risikoappetit (HYG/IEF)",
         },
+        "horizons": {
+            "vix": "Momentanwert",
+            "sp500_ma200": "Verhältnis zum 200-Tage-Durchschnitt",
+            "breadth": "Verhältnis zum 200-Tage-Durchschnitt",
+            "risk_appetite": "Verhältnis zum 200-Tage-Durchschnitt",
+        },
         "scorers": {
             "vix": _score_vix, "sp500_ma200": _score_sp500_ma200,
             "breadth": _score_stock_breadth, "risk_appetite": _score_risk_appetite,
@@ -281,6 +295,14 @@ def labels_for(market: str) -> dict[str, str]:
     """Anzeigenamen der Indikatoren des gewählten Marktes (für UI-Texte, z.B.
     die Auflistung nicht verfügbarer Indikatoren)."""
     return _MARKETS[market]["labels"]
+
+
+def horizons_for(market: str) -> dict[str, str]:
+    """Zeithorizont je Indikator (für UI-Tooltips) - Markt-Temperatur mischt
+    sehr unterschiedliche Fenster (24h Meme-Momentum bis 200-Tage-Mayer),
+    das sollte je Baustein sichtbar sein statt nur implizit in der Formel
+    zu stecken."""
+    return _MARKETS[market]["horizons"]
 
 
 def active_ladder_tier(score: float | None, thresholds: list[float], direction: str) -> int:
@@ -322,7 +344,8 @@ def market_temperature(readings: dict, market: str = "crypto") -> dict:
             continue
         score, text = result
         breakdown.append({"key": key, "label": cfg["labels"][key], "score": round(score, 1),
-                          "text": text, "weight_pct": weight})
+                          "text": text, "weight_pct": weight,
+                          "horizon": cfg["horizons"].get(key, "")})
         weighted_sum += score * weight
         weight_total += weight
 

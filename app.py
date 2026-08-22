@@ -88,7 +88,8 @@ pages = {
         st.Page(transactions.render, title="Buchungen", icon="🧾", url_path="buchungen"),
     ],
     "Analysen": [
-        st.Page(asset_detail.render, title="Markt & Einzelwertanalyse", icon="🔍", url_path="analyse"),
+        st.Page(asset_detail.render_market, title="Marktanalyse", icon="🌡️", url_path="analyse"),
+        st.Page(asset_detail.render_asset, title="Einzelwertanalyse", icon="🔎", url_path="einzelwertanalyse"),
         st.Page(backtest.render, title="Bestands-Rückrechnung", icon="⏮️", url_path="backtest"),
         st.Page(ai_desk.render, title="AI Desk", icon="🧠", url_path="ai-desk"),
         st.Page(ai_portfolio.render, title="KI-Portfolios", icon="🤖", url_path="ki-portfolio"),

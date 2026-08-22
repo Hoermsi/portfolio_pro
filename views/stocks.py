@@ -20,7 +20,7 @@ def render():
             "stock",
             symbol_help="yfinance-Ticker, z.B. NVDA, AAPL, SAP.DE, oder ISIN",
         )
-        st.caption("💡 Detail-Analyse eines Werts: Seite **Markt & Einzelwertanalyse**.")
+        st.caption("💡 Detail-Analyse eines Werts: Seite **Einzelwertanalyse**.")
 
     with tab_watch:
         positions.render_watchlist("stock")

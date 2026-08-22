@@ -219,6 +219,85 @@ def render_ladder_gauge(score: float, title: str, buy_thresholds: list[float],
     st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
 
 
+def render_bar_list(rows: list[dict], key: str | None = None, height: int | None = None):
+    """Kompakte horizontale Balkenliste für mehrere 0-100-Kennzahlen, gestapelt
+    UNTEREINANDER statt eine Reihe kleiner render_gauge()-Halbkreise NEBEN-
+    einander - deren Werte waren auf einen Blick kaum ablesbar (Nutzer-
+    Feedback). Feste Skala 0-100 (nicht auto-skaliert wie render_allocation_bars)
+    macht die Balkenlängen zwischen den Zeilen direkt vergleichbar.
+
+    rows: [{"label": str, "score": float, "invert": bool, "horizon": str}, ...] -
+    Farbe je Balken über dieselbe Ampel-Logik wie render_gauge() (gauge_color()).
+    `horizon` (optional) landet nur im Hover-Tooltip, nicht im sichtbaren Label -
+    das Label wird vom Aufrufer meist schon auf den Kurztitel gekürzt (Klammer-
+    zusatz abgeschnitten), der Zeithorizont bleibt darüber trotzdem auffindbar."""
+    text = _text_color()
+    labels = [r["label"] for r in rows]
+    scores = [r["score"] for r in rows]
+    colors = [gauge_color(r["score"], invert=r.get("invert", False)) for r in rows]
+    customdata = [r.get("horizon", "") for r in rows]
+    fig = go.Figure(go.Bar(
+        x=scores, y=labels, orientation="h",
+        marker=dict(color=colors),
+        text=[f"{s:.0f}" for s in scores], textposition="outside", cliponaxis=False,
+        textfont=dict(color=text),
+        customdata=customdata,
+        hovertemplate="%{y}: %{x:.0f}<br>%{customdata}<extra></extra>",
+    ))
+    fig.update_layout(
+        height=height or max(140, 34 * len(rows) + 20),
+        margin=dict(t=10, b=10, l=10, r=35),
+        xaxis=dict(range=[0, 100], showticklabels=False, showgrid=False, zeroline=False),
+        yaxis=dict(autorange="reversed", tickfont=dict(color=text)),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False, autosize=True,
+    )
+    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+
+
+_FUNDAMENTAL_FORMATTERS = {
+    "marktkap_eur": lambda v: f"{v / 1e9:,.2f} Mrd. €", "marktkap": lambda v: f"{v / 1e9:,.2f} Mrd. €",
+    "volumen_24h_eur": lambda v: f"{v / 1e9:,.2f} Mrd. €",
+    "kurs_eur": lambda v: f"{v:,.4g} €", "ath_eur": lambda v: f"{v:,.4g} €",
+    "analysten_kursziel": lambda v: f"{v:,.2f} €",
+    "52w_hoch": lambda v: f"{v:,.2f} €", "52w_tief": lambda v: f"{v:,.2f} €",
+    "dividendenrendite": lambda v: f"{v:.2f}%",      # yfinance liefert bereits Prozent-Skala (verifiziert)
+    "gewinnmarge": lambda v: f"{v * 100:.1f}%",        # yfinance liefert einen Bruch (0.15 = 15%)
+    "umsatzwachstum": lambda v: f"{v * 100:.1f}%",     # dito
+    "kgv": lambda v: f"{v:.2f}", "kgv_forward": lambda v: f"{v:.2f}", "beta": lambda v: f"{v:.2f}",
+    "umlauf_supply": lambda v: f"{v:,.0f}", "max_supply": lambda v: f"{v:,.0f}",
+}
+
+
+def format_fundamental(key: str, value) -> str:
+    """Feldname-bewusste Formatierung für Fundamentaldaten (Krypto: data/crypto.py
+    get_market_data(), Aktien: data/stocks.py get_fundamentals()) - eine pauschale
+    f"{v:,.2f}" für ALLE Werte zeigte Marktkap. als Rohzahl statt Mrd., Dividenden-
+    rendite als 0.02 statt 2%, Kursziele ohne Währung. Unbekannte Felder fallen auf
+    die alte pauschale Formatierung zurück, brechen also nicht."""
+    if key.endswith("_pct"):    # Krypto *_pct-Felder sind bereits Prozent (CoinGecko-Konvention)
+        return f"{value:.1f}%"
+    fmt = _FUNDAMENTAL_FORMATTERS.get(key)
+    if fmt:
+        try:
+            return fmt(value)
+        except (TypeError, ZeroDivisionError):
+            pass
+    return f"{value:,.2f}" if isinstance(value, float) else str(value)
+
+
+def render_datenstand(coverage_pct: float, sources: str, note: str = ""):
+    """Konsolidierte Datenstand-Zeile (Quelle + Abdeckung) für Analysen, die aus
+    mehreren freien Datenquellen rechnen - schafft Vertrauen, dass sichtbar
+    bleibt, was gerade tatsächlich eingeflossen ist, statt es über mehrere
+    verstreute Captions zu erraten. "soeben abgerufen" statt echtem Zeitstempel:
+    jedes Rendern holt live neu, es gibt keinen persistierten Last-Fetch-
+    Zustand (und den extra dafür aufzubauen wäre für dieses Gewicht des
+    Themas unverhältnismäßig - siehe Docstring der aufrufenden Stelle)."""
+    st.caption(f"📊 Datenstand: soeben abgerufen · Quellen: {sources} · "
+              f"Abdeckung {coverage_pct:.0f}%" + (f" · {note}" if note else ""))
+
+
 def render_price_chart(df: pd.DataFrame, fibs: dict | None = None, height: int = 420,
                        key: str | None = None):
     """Kurs-Chart mit Bollinger, MA50/200 und optionalen Fibonacci-Linien."""
