@@ -57,6 +57,33 @@ def test_walk_forward_score_all_nan_without_enough_price_history():
     assert score.isna().all()
 
 
+# --- score_history ---
+
+def test_score_history_with_injected_series_matches_walk_forward_score():
+    """score_history() ist nur ein Default-Fetch-Wrapper - bei injizierten
+    Serien muss das Ergebnis exakt walk_forward_score() entsprechen. ALLE
+    vier Serien werden hier explizit übergeben (auch puell/fear_greed_30d),
+    sonst würde score_history() für die fehlenden Serien auf die echten
+    Default-Fetches zurückfallen (cycle._onchain_series/_fear_greed_30d_series -
+    echte DB/Netzwerk-Zugriffe, die in einem Test nichts verloren haben)."""
+    price = _price_series(400)
+    mvrv = pd.Series(np.linspace(1.0, 100.0, 300), index=price.index[100:])
+    puell = pd.Series(np.linspace(0.5, 5.0, 400), index=price.index)
+    fear_greed_30d = pd.Series(np.linspace(10.0, 90.0, 400), index=price.index)
+
+    via_wrapper = cycle_backtest.score_history(price=price, mvrv=mvrv, puell=puell,
+                                               fear_greed_30d=fear_greed_30d)
+    direct = cycle_backtest.walk_forward_score(price, mvrv=mvrv, puell=puell,
+                                              fear_greed_30d=fear_greed_30d)
+    pd.testing.assert_series_equal(via_wrapper, direct)
+
+
+def test_score_history_empty_without_price(monkeypatch):
+    monkeypatch.setattr(cycle, "btc_price_series", lambda: None)
+    result = cycle_backtest.score_history()
+    assert result.empty
+
+
 # --- simulate_sell_ladder ---
 
 def test_simulate_sell_ladder_no_trades_below_threshold():

@@ -203,7 +203,8 @@ def cycle_score() -> dict:
     {"score": float|None, "regime": str, "regime_reason": str,
      "breakdown": [{"key","label","score","value","text","weight_pct"}, ...],
      "unavailable": [...], "coverage_pct": float,
-     "price_now": float|None, "drawdown_pct": float|None}
+     "price_now": float|None, "drawdown_pct": float|None,
+     "onchain_as_of": str|None}   # TT.MM.JJJJ, jüngstes Datum der On-Chain-Serie
     """
     price = btc_price_series()
     breakdown = []
@@ -244,12 +245,20 @@ def cycle_score() -> dict:
     if dd_series is not None and not dd_series.empty:
         drawdown_pct = float(dd_series.iloc[-1])
 
+    # Jüngstes Datum der On-Chain-Serie (nicht dasselbe wie "heute" - die
+    # bitcoin-data.com-Quelle wird nur einmal täglich nachgezogen, ttl_cache
+    # in data/onchain.py). Für die "Datenstand"-Zeile in der UI, damit "soeben
+    # abgerufen" hier nicht faelschlich einen taufrischen Wert suggeriert.
+    mvrv_series = series_by_key.get("mvrv_z")
+    onchain_as_of = (mvrv_series.index[-1].strftime("%d.%m.%Y")
+                     if mvrv_series is not None and not mvrv_series.empty else None)
+
     if weight_total <= 0:
         return {
             "score": None, "regime": "Unbekannt",
             "regime_reason": "Keine Zyklus-Indikatoren verfügbar.",
             "breakdown": [], "unavailable": unavailable, "coverage_pct": 0.0,
-            "price_now": price_now, "drawdown_pct": drawdown_pct,
+            "price_now": price_now, "drawdown_pct": drawdown_pct, "onchain_as_of": onchain_as_of,
         }
 
     overall = weighted_sum / weight_total
@@ -268,6 +277,7 @@ def cycle_score() -> dict:
         "coverage_pct": coverage_pct,
         "price_now": price_now,
         "drawdown_pct": drawdown_pct,
+        "onchain_as_of": onchain_as_of,
     }
 
 

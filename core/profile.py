@@ -186,17 +186,21 @@ def validate_ladder_stages(sell: list[float], buy: list[float]) -> list[str]:
 # nach einem neuen Zyklus-Tief, wenn wieder aufgebaut wird) - "reached_tier"
 # fällt NIE automatisch zurück.
 
-_DEFAULT_CYCLE_PROGRESS = {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {}}
+_DEFAULT_CYCLE_PROGRESS = {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {},
+                           "acked_tiers": []}
 _MAX_LOG_ENTRIES = 50
 
 
 def cycle_progress(market: str) -> dict:
     """{"reached_tier": 0-3, "executed_pct": 0-100, "log": [{"at","tier",
-    "executed_pct","note"}, ...], "basis": {"SYMBOL": menge, ...}} - sichere
-    Standardwerte bei fehlendem/kaputtem Meta-Eintrag. `basis` ist der beim
-    ersten Erreichen von Stufe 1 eingefrorene Ausgangsbestand des aktuellen
-    Zyklus (siehe advance_cycle_tier()) - Grundlage für exit_ranking.sell_list()'s
-    Restmengen-Berechnung in späteren Stufen."""
+    "executed_pct","note"}, ...], "basis": {"SYMBOL": menge, ...},
+    "acked_tiers": [1,2,...]} - sichere Standardwerte bei fehlendem/kaputtem
+    Meta-Eintrag. `basis` ist der beim ersten Erreichen von Stufe 1
+    eingefrorene Ausgangsbestand des aktuellen Zyklus (siehe advance_cycle_tier()) -
+    Grundlage für exit_ranking.sell_list()'s Restmengen-Berechnung in
+    späteren Stufen. `acked_tiers`: welche bestätigten Stufen der Nutzer als
+    "gelesen und durchgeführt" abgehakt hat - getrennt von reached_tier, das
+    nur aussagt, DASS die Stufe erreicht wurde (siehe ack_cycle_tier())."""
     raw = db.get_meta(f"cycle_progress_{market}")
     try:
         values = json.loads(raw) if raw else {}
@@ -228,6 +232,18 @@ def cycle_progress(market: str) -> dict:
         out["basis"] = cleaned
     else:
         out["basis"] = {}
+    if isinstance(out["acked_tiers"], list):
+        acked = set()
+        for t in out["acked_tiers"]:
+            try:
+                t = int(t)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= t <= 3:
+                acked.add(t)
+        out["acked_tiers"] = sorted(acked)
+    else:
+        out["acked_tiers"] = []
     return out
 
 
@@ -257,6 +273,23 @@ def advance_cycle_tier(market: str, tier: int, note: str = "",
     return progress
 
 
+def ack_cycle_tier(market: str, tier: int, note: str = "") -> dict:
+    """Markiert eine bereits bestätigte Stufe als abgehakt (gelesen UND
+    durchgeführt). Getrennt von advance_cycle_tier(): dort geht es darum, DASS
+    die Stufe erreicht ist (Sperrklinke, fällt nie zurück), hier darum, dass
+    der Nutzer tatsächlich gehandelt hat - beide Aussagen können auseinander-
+    fallen (bestätigt, aber noch nicht verkauft). Wirkungslos (kein Fehler),
+    wenn `tier` die Sperrklinke noch nicht erreicht hat."""
+    progress = cycle_progress(market)
+    tier = int(tier)
+    if 1 <= tier <= progress["reached_tier"] and tier not in progress["acked_tiers"]:
+        progress["acked_tiers"] = sorted(set(progress["acked_tiers"]) | {tier})
+        progress["log"] = ([{"at": _now(), "acked_tier": tier, "note": note}]
+                           + progress["log"])[:_MAX_LOG_ENTRIES]
+        _save_cycle_progress(market, progress)
+    return progress
+
+
 def mark_cycle_executed(market: str, executed_pct: float, note: str = "") -> dict:
     """Trägt ein, wie viel Prozent der aktuellen Verkaufsstufe der Nutzer
     tatsächlich ausgeführt hat - rein informativ (wie das ganze Zyklus-
@@ -279,6 +312,7 @@ def reset_cycle_progress(market: str, note: str = "Neuer Zyklus") -> dict:
     progress["reached_tier"] = 0
     progress["executed_pct"] = 0.0
     progress["basis"] = {}
+    progress["acked_tiers"] = []
     progress["log"] = ([{"at": _now(), "reset": True, "note": note}] + progress["log"])[:_MAX_LOG_ENTRIES]
     _save_cycle_progress(market, progress)
     return progress

@@ -7,9 +7,9 @@ import pandas as pd
 import streamlit as st
 
 from agents import cycle_analyst, senior_manager
-from analysis import alerts, market_timing, risk as risk_analysis, technical
+from analysis import alerts, alt_top, market_timing, risk as risk_analysis, technical
 from analysis import cycle as cycle_mod
-from analysis import cycle_backtest, exit_ranking
+from analysis import cycle_backtest, exit_ranking, performance
 from core import config, db, profile
 from data import crypto as crypto_data
 from data import crypto_history
@@ -41,10 +41,58 @@ def _market_choice(widget_key: str) -> str:
 
 def render_market():
     components.page_header("Analysen", "Marktanalyse",
-                           "Markt-Temperatur, Zyklus-Position und KI-Einschätzung für Krypto und Aktien.")
+                           "Markt-Temperatur, Zyklus-Position, Altcoin-Überhitzung und "
+                           "KI-Einschätzung für Krypto und Aktien.")
 
-    market = _market_choice("indicator_market_market")
-    _render_market_temperature(market)
+    col_market, col_ai = st.columns([2, 1], vertical_alignment="bottom")
+    with col_market:
+        market = _market_choice("indicator_market_market")
+
+    run_ai = False
+    model = st.session_state.get("senior_model", config.DEFAULT_SENIOR_MODEL)
+    if market == "crypto":
+        est = cycle_analyst.estimate_cost(model)
+        with col_ai:
+            run_ai = st.button(
+                "🔮 Zyklus-Einschätzung", key="cycle_ai_run_top", width="stretch",
+                help=f"Bewertet Markt-Temperatur, Zyklus-Score und Altcoin-Überhitzung "
+                     f"gemeinsam · geschätzte Kosten ≈ ${est:.3f} ({config.model_label(model)}, "
+                     "Modell in der Sidebar wählbar). Bewertet den Markt, nicht dein Depot.")
+
+    # st.empty() statt st.container(): unterstuetzt Ueberschreiben statt nur
+    # Anhaengen, damit die sofortige "wird geladen"-Meldung unten wieder durch
+    # die echte Zusammenfassung ersetzt werden kann. Vor _render_market_temperature
+    # angelegt, aber ERST danach befuellt - Streamlit rendert Inhalte an der
+    # Position, an der der Slot erzeugt wurde, nicht an der Stelle des Befuellens.
+    # So steht die KI-Kurzfassung oben, obwohl sie von Werten abhaengt, die erst
+    # weiter unten berechnet werden.
+    summary_slot = st.empty() if market == "crypto" else None
+
+    if run_ai and summary_slot is not None:
+        # Sofort-Feedback VOR der (teils mehrere Sekunden dauernden) Neuberechnung
+        # der Indikatoren weiter unten - sonst wirkt der Klick fuer ein paar
+        # Sekunden wirkungslos und verleitet zu einem zweiten, ungeduldigen Klick.
+        with summary_slot:
+            st.info("🔮 Zyklus-Einschätzung wird vorbereitet – Indikatoren werden geladen …")
+
+    temp, cyc, alt = _render_market_temperature(market)
+
+    if run_ai:
+        with st.spinner("KI wertet Markt-Temperatur, Zyklus-Score und Altcoin-Überhitzung aus ..."):
+            result = cycle_analyst.run_cycle_analysis(model, cycle=cyc, temp=temp, alt=alt)
+        st.session_state["cycle_ai_result"] = result
+        st.session_state["session_cost"] = (
+            st.session_state.get("session_cost", 0.0) + result.get("total_cost_usd", 0.0)
+        )
+        # Rerun statt Weiterlaufen: die Detail-Ansicht unten (_render_cycle_ai, Teil von
+        # _render_market_temperature weiter oben in diesem Durchlauf) haette sonst noch
+        # den ALTEN Stand gezeigt, waehrend die Zusammenfassung unten bereits den neuen
+        # zeigt - ein Rerun bringt beide auf denselben, aktuellen Stand.
+        st.rerun()
+
+    if summary_slot is not None:
+        with summary_slot:
+            _render_ai_summary(st.session_state.get("cycle_ai_result"))
 
     st.divider()
     st.caption("💡 Einzelnen Wert analysieren? Siehe Seite **Einzelwertanalyse**.")
@@ -200,7 +248,11 @@ def _fetch_stock_readings() -> dict:
     }
 
 
-def _render_market_temperature(market: str):
+def _render_market_temperature(market: str) -> tuple[dict | None, dict | None, dict | None]:
+    """Rendert Markt-Temperatur, Zyklus-Position und Altcoin-Überhitzung; gibt
+    (temp, cyc, alt) zurück, damit render_market() sie an die KI-Zyklus-
+    Einschätzung weiterreichen kann, ohne sie dort ein zweites Mal (inkl.
+    aller Netzabrufe) zu berechnen."""
     coinbase_rank = None
     with st.spinner("Lade Sentiment-Indikatoren …"):
         if market == "crypto":
@@ -214,7 +266,7 @@ def _render_market_temperature(market: str):
     if temp["score"] is None:
         st.markdown(f"### 🌡️ Markt-Temperatur{market_suffix}")
         st.info("Sentiment-Daten gerade nicht erreichbar.")
-        return
+        return temp, None, None
 
     # Tageswert je Indikator festhalten, mit Markt-Praefix (Krypto und Aktien
     # duerfen sich am selben Tag nicht ueberschreiben - core.db._migrate_sentiment_prefix).
@@ -252,19 +304,31 @@ def _render_market_temperature(market: str):
                    for row in breakdown]
         components.render_bar_list(bar_rows, key=f"temp_bars_{market}")
 
+    temp_hist = performance.sentiment_series(f"{market}:overall")
+    components.render_score_history_chart(temp_hist, "Markt-Temperatur", invert=True,
+                                          key=f"temp_history_{market}")
+    if len(temp_hist.dropna()) < 30:
+        st.caption("Verlauf sammelt sich mit jedem Seitenbesuch — noch keine "
+                  "durchgehende Zeitreihe.")
+
     if temp["unavailable"]:
         labels = market_timing.labels_for(market)
         missing = ", ".join(labels.get(k, k) for k in temp["unavailable"])
         st.caption(f"Gerade nicht verfügbar (Gewichte auf die übrigen umverteilt): {missing}")
     extra = (" Dominanz- und Meme-Momentum-Trends werden ab jetzt selbst aufgezeichnet "
-            "(CoinGecko liefert dafür nur Momentanwerte)." if market == "crypto" else "")
+            "(CoinGecko liefert dafür nur Momentanwerte) - **an App-Öffnungstagen**: die "
+            "Aufzeichnung läuft nur, wenn diese Seite besucht wird, kein Hintergrund-Tageslauf. "
+            "Ein späterer Verlauf hat deshalb Lücken an Tagen ohne Besuch, keine lückenlose "
+            "Zeitreihe." if market == "crypto" else "")
     st.caption("Gewichtung ist eine Einschätzung, kein Backtest-Ergebnis." + extra)
 
     st.divider()
-    _render_cycle_ladder(market, temp, readings)
+    cyc = _render_cycle_ladder(market, temp, readings)
+    alt = _render_alt_top(market)
     _render_cycle_ai(market)
 
     _render_position_details(market)
+    return temp, cyc, alt
 
 
 def _ladder_stages_line(label: str, thresholds: list[float], active_tier: int) -> str:
@@ -278,6 +342,20 @@ def _ladder_stages_line(label: str, thresholds: list[float], active_tier: int) -
         text = f"Stufe {i}: {value:.0f}"
         parts.append(f"**{text}**" if i <= active_tier else text)
     return f"{label} — " + " · ".join(parts)
+
+
+_MIN_COVERAGE_FOR_CONFIRM = 60.0
+
+
+def _find_ack_date(log: list[dict], tier: int) -> str | None:
+    """Datum (TT.MM.JJJJ) des jüngsten Log-Eintrags, der Stufe `tier` abhakt -
+    log ist neuestes zuerst (core.profile._save_cycle_progress-Konvention)."""
+    for entry in log:
+        if entry.get("acked_tier") == tier:
+            at = entry.get("at", "")
+            parts = at[:10].split("-")
+            return f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else at
+    return None
 
 
 def _render_ladder_suggestion(market: str, cyc: dict, sell: list[float], buy: list[float]):
@@ -318,7 +396,7 @@ def _render_ladder_suggestion(market: str, cyc: dict, sell: list[float], buy: li
     st.divider()
 
 
-def _render_cycle_ladder(market: str, temp: dict, readings: dict):
+def _render_cycle_ladder(market: str, temp: dict, readings: dict) -> dict:
     """Zweites Barometer 'Zyklus-Position' + eigene, frei einstellbare Kauf-/
     Verkaufs-Stufen. Zeigt nur an, was DEINE Regel gerade sagt - die App
     verkauft/kauft nichts automatisch (wie das Notgroschen-Feature: rein
@@ -331,13 +409,15 @@ def _render_cycle_ladder(market: str, temp: dict, readings: dict):
     Näherung (nur Fear&Greed + Mayer auf 1 Jahr Historie). Aktien: entspricht
     weiterhin 1:1 der Markt-Temperatur, da dort alle 4 Indikatoren ohnehin
     volle Kurs-Historie haben.
-    """
+
+    Gibt `cyc` zurück, damit render_market() es an die KI-Zyklus-Einschätzung
+    weiterreichen kann, ohne es dort erneut zu berechnen."""
     if market == "crypto":
         cyc = cycle_mod.cycle_score()
     else:
         cyc = temp
     if cyc["score"] is None:
-        return
+        return cyc
 
     cfg = profile.ladder_config(market)
     sell, buy = cfg["sell"], cfg["buy"]
@@ -359,9 +439,12 @@ def _render_cycle_ladder(market: str, temp: dict, readings: dict):
         st.caption(f"Zyklus-Score aus {len(cyc['breakdown'])} Bausteinen über die gesamte "
                    f"verfügbare BTC-Historie — regelbasiertes Regime: **{cyc['regime']}** "
                    f"({cyc['regime_reason']})")
+        onchain_note = (f"On-Chain-Metriken Stand {cyc['onchain_as_of']}"
+                       if cyc.get("onchain_as_of") else "")
         components.render_datenstand(cyc["coverage_pct"],
                                      "BTC-Kurshistorie (yfinance/Kraken/CoinGecko), On-Chain-"
-                                     "Metriken (bitcoin-data.com), Fear&Greed-Index")
+                                     "Metriken (bitcoin-data.com), Fear&Greed-Index",
+                                     note=onchain_note)
     else:
         st.caption("Entspricht der Markt-Temperatur (US-Aktienmarkt: S&P 500, VIX, RSP/SPY, "
                    "HYG/IEF) - alle 4 Indikatoren haben ohnehin volle Kurs-Historie.")
@@ -375,24 +458,48 @@ def _render_cycle_ladder(market: str, temp: dict, readings: dict):
         st.markdown(_ladder_stages_line("🟢 Kauf", buy, buy_tier))
 
         if sell_tier > confirmed_tier:
+            coverage = cyc["coverage_pct"]
+            jump = sell_tier - confirmed_tier
             st.info(f"📈 Score erreicht Verkaufs-Stufe {sell_tier}/3 (Score {score:.0f}) — "
                    "**noch nicht bestätigt**. Erst nach deiner Bestätigung zählt sie als "
                    "erreicht und bleibt (Sperrklinke) bestehen, falls der Score wieder fällt.")
-            if st.button(f"Stufe {sell_tier} bestätigen", key=f"cycle_confirm_{market}"):
-                basis = exit_ranking.held_symbols() if market == "crypto" else None
-                profile.advance_cycle_tier(market, sell_tier, note=f"Score {score:.0f}", basis=basis)
-                st.rerun()
+            if coverage < _MIN_COVERAGE_FOR_CONFIRM:
+                st.caption(f"🔒 Bestätigung gesperrt: nur {coverage:.0f}% Datenabdeckung "
+                          f"(unter {_MIN_COVERAGE_FOR_CONFIRM:.0f}% zu dünn für eine so "
+                          "wichtige Entscheidung).")
+            else:
+                jump_ok = True
+                if jump > 1:
+                    target_pct = profile.LADDER_FRACTIONS_PCT[sell_tier - 1]
+                    jump_ok = st.checkbox(
+                        f"Mir ist klar, dass damit auch die übersprungenen Stufen als "
+                        f"erreicht gelten — Ziel {target_pct}% gilt als bestätigt.",
+                        key=f"cycle_confirm_jump_ack_{market}",
+                    )
+                if st.button(f"Stufe {sell_tier} bestätigen", key=f"cycle_confirm_{market}",
+                            disabled=not jump_ok):
+                    basis = exit_ranking.held_symbols() if market == "crypto" else None
+                    profile.advance_cycle_tier(market, sell_tier, note=f"Score {score:.0f}", basis=basis)
+                    st.rerun()
 
         if confirmed_tier:
-            target_pct = profile.LADDER_FRACTIONS_PCT[confirmed_tier - 1]
-            executed = progress["executed_pct"]
-            offen = max(0.0, target_pct - executed)
-            st.warning(f"🔴 Bestätigte Verkaufs-Stufe {confirmed_tier}/3 — deine Regel: "
-                      f"{target_pct}% verkaufen. Ausgeführt: {executed:.0f}% · "
-                      f"**offen: {offen:.0f}%**"
-                      + ("" if sell_tier >= confirmed_tier else
-                         f" (hält vom früheren Höchststand fest, Score aktuell nur "
-                         f"noch bei Stufe {sell_tier})"))
+            for tier in range(1, confirmed_tier + 1):
+                target_pct = profile.LADDER_FRACTIONS_PCT[tier - 1]
+                if tier in progress["acked_tiers"]:
+                    ack_date = _find_ack_date(progress["log"], tier)
+                    st.success(f"✅ Stufe {tier}/3 (Ziel {target_pct}%) — abgehakt"
+                              + (f" am {ack_date}" if ack_date else ""))
+                else:
+                    c1, c2 = st.columns([3, 1], vertical_alignment="center")
+                    with c1:
+                        st.warning(f"🔴 Stufe {tier}/3 (Ziel {target_pct}%) — noch nicht abgehakt.")
+                    with c2:
+                        if st.button("Abhaken", key=f"cycle_ack_{market}_{tier}"):
+                            profile.ack_cycle_tier(market, tier)
+                            st.rerun()
+            if sell_tier < confirmed_tier:
+                st.caption(f"Hält vom früheren Höchststand fest — Score aktuell nur noch bei "
+                          f"Stufe {sell_tier}.")
         elif buy_tier:
             st.success(f"🟢 Kauf-Stufe {buy_tier}/3 erreicht (Score {score:.0f}) — "
                       f"deine Regel: {profile.LADDER_FRACTIONS_PCT[buy_tier - 1]}% des "
@@ -409,7 +516,10 @@ def _render_cycle_ladder(market: str, temp: dict, readings: dict):
         )
 
     if market == "crypto":
-        _render_cycle_details(cyc, sell, confirmed_tier, progress)
+        cycle_hist = cycle_backtest.score_history()
+        components.render_score_history_chart(cycle_hist, "Zyklus-Position", invert=True,
+                                              key="cycle_history_crypto")
+        _render_cycle_details(cyc, confirmed_tier, progress)
 
     with st.expander("⚙️ Eigene Stufen einstellen"):
         _render_ladder_suggestion(market, cyc, sell, buy)
@@ -442,29 +552,59 @@ def _render_cycle_ladder(market: str, temp: dict, readings: dict):
             st.success("Zurückgesetzt - die Sperrklinke beginnt wieder bei Stufe 0.")
             st.rerun()
 
+    return cyc
 
-def _render_cycle_details(cyc: dict, sell_thresholds: list[float], confirmed_tier: int, progress: dict):
-    """Indikator-Tabelle, Trigger-Preise, Verkaufsliste, Ausführungs-Fortschritt
-    und Backtest zur Zyklus-Position - nur Krypto (BTC-Historie + On-Chain-
-    Daten sind die Grundlage, für Aktien gibt es das nicht). `confirmed_tier`
-    ist die BESTÄTIGTE Stufe (core.profile.cycle_progress()["reached_tier"]),
-    nicht der live gelesene Score-Stand - alles hier erscheint erst nach der
-    expliziten Bestätigung in _render_cycle_ladder()."""
+
+def _render_cycle_details(cyc: dict, confirmed_tier: int, progress: dict):
+    """Indikator-Tabelle und Verkaufsliste zur Zyklus-Position - nur Krypto
+    (BTC-Historie + On-Chain-Daten sind die Grundlage, für Aktien gibt es das
+    nicht). `confirmed_tier` ist die BESTÄTIGTE Stufe (core.profile.
+    cycle_progress()["reached_tier"]), nicht der live gelesene Score-Stand -
+    alles hier erscheint erst nach der expliziten Bestätigung in
+    _render_cycle_ladder().
+
+    Trigger-Preise und Backtest wurden aus der UI entfernt (Nutzerentscheidung,
+    beide waren als Expander wenig genutzt) - beide bleiben aber in
+    agents/cycle_analyst.py in Gebrauch und speisen dort weiterhin die
+    KI-Zyklus-Einschätzung, sie sind nicht ersatzlos gestrichen.
+    """
+    plan = None
     if confirmed_tier:
         target_pct = profile.LADDER_FRACTIONS_PCT[confirmed_tier - 1]
-        c1, c2 = st.columns([2, 1])
-        with c1:
+        partial = st.checkbox("Letzte Position anteilig verkaufen (statt ganze Position)",
+                              key="cycle_sell_partial",
+                              help="Trifft das Ziel genauer, statt bei der letzten nötigen "
+                                   "Position ganz zu überschießen.")
+        with st.spinner("Berechne Ausstiegs-Rangliste …"):
+            plan = exit_ranking.sell_list(target_pct, basis=progress.get("basis") or {},
+                                          partial_last=partial)
+
+        # already_sold_value_eur ist der TATSÄCHLICH schon verkaufte Anteil
+        # (Basis-Menge vs. aktueller Bestand) - NICHT dasselbe wie
+        # sell_pct_actual weiter unten, das den noch offenen Verkaufsvorschlag
+        # bereits mit einrechnet ("wenn du diese Liste auch noch ausführst").
+        derived_pct = None
+        if plan["basis_value_eur"]:
+            derived_pct = plan["already_sold_value_eur"] / plan["basis_value_eur"] * 100
+            st.metric("Laut Depot-Vergleich bereits verkauft", f"{derived_pct:.0f}%",
+                     help=f"Aus Zyklus-Basis vs. aktuellem Bestand abgeleitet - kein manueller "
+                          f"Eintrag nötig. Ziel dieser Stufe: {target_pct}%.")
+
+        with st.expander("Abweichung nachtragen (z.B. Verkäufe auf einer anderen Börse)"):
+            st.caption("Der abgeleitete Wert oben stammt aus deinem hier erfassten Bestand. "
+                      "Für Verkäufe, die dieses Depot nicht sieht, kannst du hier manuell "
+                      "nachhalten - überschreibt die Ableitung nicht, ergänzt sie nur.")
             executed = st.number_input(
-                "Tatsächlich ausgeführt (%) - rein informativ, die App verkauft nichts selbst",
-                0.0, 100.0, float(progress["executed_pct"]), step=1.0, key="cycle_executed_pct",
+                "Manuell erfasster Anteil (%)", 0.0, 100.0,
+                float(progress["executed_pct"]), step=1.0, key="cycle_executed_pct",
             )
-        with c2:
-            st.write("")
-            st.write("")
             if st.button("Speichern", key="cycle_executed_save"):
                 profile.mark_cycle_executed("crypto", executed)
                 st.success("Gespeichert.")
                 st.rerun()
+            if derived_pct is not None and abs(executed - derived_pct) > 1.0:
+                st.caption(f"⚠️ Weicht {abs(executed - derived_pct):.0f} Prozentpunkte vom "
+                          "abgeleiteten Wert oben ab.")
 
     with st.expander("📋 Indikatoren im Detail"):
         rows = [{"Baustein": r["label"], "Wert": r["text"],
@@ -475,26 +615,9 @@ def _render_cycle_details(cyc: dict, sell_thresholds: list[float], confirmed_tie
             st.caption("Nicht verfügbar (Gewichte auf die übrigen umverteilt): "
                       + ", ".join(cyc["unavailable"]))
 
-    with st.expander("💰 Trigger-Preise (nächste Stufen)"):
-        st.caption("Näherung: nur die preisabhängigen Bausteine (Mayer, 2-Jahres-Multiple, "
-                  "ATH-Abstand) werden variiert - On-Chain- und Sentiment-Bausteine bleiben "
-                  "auf dem heutigen Stand eingefroren.")
-        for i, th in enumerate(sell_thresholds, start=1):
-            tp = cycle_mod.trigger_price(th, cycle=cyc)
-            st.write(f"Stufe {i} (Score ≥ {th:.0f}): "
-                    + (f"ab BTC ≈ {tp:,.0f} €" if tp else "bei aktueller Lage auch bei "
-                                                          "sehr hohem Preis nicht erreichbar"))
-
-    if confirmed_tier:
+    if confirmed_tier and plan is not None:
         target_pct = profile.LADDER_FRACTIONS_PCT[confirmed_tier - 1]
         with st.expander(f"📉 Verkaufsliste für Stufe {confirmed_tier} ({target_pct}%)", expanded=True):
-            partial = st.checkbox("Letzte Position anteilig verkaufen (statt ganze Position)",
-                                  key="cycle_sell_partial",
-                                  help="Trifft das Ziel genauer, statt bei der letzten nötigen "
-                                       "Position ganz zu überschießen.")
-            with st.spinner("Berechne Ausstiegs-Rangliste …"):
-                plan = exit_ranking.sell_list(target_pct, basis=progress.get("basis") or {},
-                                              partial_last=partial)
             if plan["basis_price_unavailable"]:
                 st.caption("⚠️ Kein aktueller Kurs für Basis-Symbole: "
                           + ", ".join(plan["basis_price_unavailable"])
@@ -511,11 +634,11 @@ def _render_cycle_details(cyc: dict, sell_thresholds: list[float], confirmed_tie
                                 "Exit-Score": st.column_config.NumberColumn(format="%.0f"),
                             })
                 if plan["basis_value_eur"]:
-                    st.caption(f"Gesamt: {plan['sell_value_eur']:,.2f} € — kumuliert seit "
-                              f"Zyklusbeginn bereits {plan['sell_pct_actual']:.0f}% von "
-                              f"{plan['basis_value_eur']:,.2f} € Ausgangsbestand verkauft "
-                              f"(Ziel dieser Stufe: {target_pct}%). Schwächste Positionen werden "
-                              "komplett verkauft statt jede Position anteilig anzuschneiden.")
+                    st.caption(f"Diese Liste: {plan['sell_value_eur']:,.2f} €. Zusammen mit dem "
+                              f"bereits Verkauften wärst du danach bei {plan['sell_pct_actual']:.0f}% "
+                              f"von {plan['basis_value_eur']:,.2f} € Ausgangsbestand (Ziel dieser "
+                              f"Stufe: {target_pct}%). Schwächste Positionen werden komplett "
+                              "verkauft statt jede Position anteilig anzuschneiden.")
                 else:
                     st.caption(f"Gesamt: {plan['sell_value_eur']:,.2f} € "
                               f"({plan['sell_pct_actual']:.0f}% von {plan['total_value_eur']:,.2f} €). "
@@ -524,56 +647,113 @@ def _render_cycle_details(cyc: dict, sell_thresholds: list[float], confirmed_tie
             else:
                 st.caption("Kein bewertbarer Krypto-Bestand für eine Verkaufsliste.")
 
-    with st.expander("📈 Wie gut war das historisch? (Backtest)"):
-        with st.spinner("Rechne Walk-Forward-Backtest …"):
-            bt = cycle_backtest.run_backtest(sell_thresholds=sell_thresholds)
-        if not bt.get("available"):
-            st.caption(bt.get("reason", "Kein Backtest verfügbar."))
-        else:
-            st.caption(f"Walk-Forward {bt['start_date']} bis {bt['end_date']} - nur die "
-                      "Verkaufsseite, kein simulierter Wiedereinstieg. Perzentile ausschließlich "
-                      "aus Daten bis zum jeweiligen Tag (kein Zukunftswissen).")
-            st.caption("⚠️ Plausibilitätscheck über einen einzigen historischen Pfad mit sehr "
-                      "wenigen vollständigen Zyklen — kein Beleg für optimale Schwellen; kein "
-                      "Wiedereinstieg, keine Steuern, keine Cash-Verzinsung modelliert.")
-            b1, b2, b3 = st.columns(3)
-            b1.metric("Deine Leiter", f"{bt['ladder_value_eur']:,.0f} €")
-            b2.metric("Buy & Hold", f"{bt['buy_hold_value_eur']:,.0f} €",
-                     delta=f"{bt['ladder_vs_buy_hold_pct']:+.0f}%" if bt.get("ladder_vs_buy_hold_pct") is not None else None)
-            b3.metric("Perfekter Topverkauf", f"{bt['perfect_top_value_eur']:,.0f} €")
-            if bt["avg_miss_vs_next_peak_pct"] is not None:
-                st.caption(f"{bt['trade_count']} Verkäufe ausgelöst, im Schnitt "
-                          f"{bt['avg_miss_vs_next_peak_pct']:.0f}% unter dem jeweils nächsten Hoch "
-                          f"verkauft (schlechtester Einzelfall: {bt['worst_miss_vs_next_peak_pct']:.0f}%).")
-            else:
-                st.caption("In diesem Zeitraum wurde keine Verkaufsstufe ausgelöst.")
 
+def _render_alt_top(market: str) -> dict | None:
+    """Altcoin-Überhitzungs-Barometer (analysis/alt_top.py) - unabhängig vom
+    BTC-basierten Zyklus-Score oben, nur Krypto. KEIN Top-Timer (siehe
+    Modul-Docstring dort): misst, wie weit der Alt-Markt gegenüber seiner
+    eigenen Historie gelaufen ist, sagt aber nicht, dass ein Top unmittelbar
+    bevorsteht - der historische Höchstwert lag beim Nov-2021-Top rund sechs
+    Monate zu früh.
 
-def _render_cycle_ai(market: str):
-    """KI-Zyklus-Einschätzung: eigener dritter Analyse-Modus (agents/cycle_analyst.py),
-    nur Krypto, nur auf Klick (API-Kosten) - nie automatisch beim Seitenaufruf."""
+    Gibt `alt` zurück (None bei Aktien), damit render_market() es an die
+    KI-Zyklus-Einschätzung weiterreichen kann, ohne den ~10-teiligen
+    sequentiellen Korb-Abruf dort zu wiederholen."""
     if market != "crypto":
-        return
+        return None
 
     st.divider()
-    st.markdown("### 🤖 KI-Zyklus-Einschätzung")
-    model = st.session_state.get("senior_model", config.DEFAULT_SENIOR_MODEL)
-    est = cycle_analyst.estimate_cost(model)
-    st.caption(f"Einmalige Markteinordnung ({config.model_label(model)}) · geschätzte Kosten "
-              f"≈ ${est:.3f} (Modell in der Sidebar wählbar). Bewertet den Markt, nicht dein "
-              "Depot - die Ausstiegs-Rangliste oben bleibt davon unabhängig.")
+    with st.spinner("Lade Altcoin-Korb …"):
+        alt = alt_top.alt_top_score()
+    if alt["score"] is None:
+        st.markdown("### 🔥 Altcoin-Überhitzung")
+        st.info("Altcoin-Korb gerade nicht ausreichend verfügbar.")
+        return alt
 
-    if st.button("🔮 Zyklus-Einschätzung starten", key="cycle_ai_run"):
-        status = st.status("KI bewertet die Zyklus-Lage ...", expanded=True)
-        result = cycle_analyst.run_cycle_analysis(model, progress_cb=lambda msg: status.write(msg))
-        status.update(label="Fertig", state="complete", expanded=False)
-        st.session_state["cycle_ai_result"] = result
-        st.session_state["session_cost"] = (
-            st.session_state.get("session_cost", 0.0) + result.get("total_cost_usd", 0.0)
+    color = components.gauge_color(alt["score"], invert=True)
+    st.markdown(
+        f"### 🔥 Altcoin-Überhitzung: "
+        f"<span style='color:{color}'>{alt['regime']} — {alt['score']:.0f}/100</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Misst, wie weit der ALTCOIN-Markt gegenüber seiner eigenen Historie gelaufen ist — "
+        "unabhängig von der BTC-basierten Zyklus-Position oben. **Kein Top-Timer**: ein hoher "
+        "Wert heißt erhöhtes Risiko, nicht ein unmittelbar bevorstehendes Top — beim Nov-2021-Top "
+        "lag der historische Höchstwert bereits sechs Monate vorher, Alts stiegen danach noch "
+        "rund 50% weiter."
+    )
+    components.render_datenstand(
+        alt["coverage_pct"], "yfinance/Kraken (10 Altcoins + BTC)",
+        note=f"Korb heute: {alt['basket_size']}/{len(alt_top._BASKET)} Coins verfügbar",
+    )
+    if alt["limited"]:
+        st.warning(f"⚠️ Eingeschränkte Aussagekraft: nur {alt['basket_size']} von "
+                  f"{len(alt_top._BASKET)} Coins liefern gerade einen Kurs (z.B. wegen einer "
+                  "API-Störung). Kein Alarm wird bei so dünner Datenlage ausgelöst, auch wenn "
+                  "der Score hoch steht - insbesondere die Streuung im Korb ist bei wenigen "
+                  "Coins statistisch kaum belastbar.")
+
+    col_gauge, col_bars = st.columns([1, 2], vertical_alignment="center")
+    with col_gauge:
+        components.render_gauge(alt["score"], "Altcoin-Überhitzung",
+                                key="alt_top_gauge", invert=True, height=220)
+    with col_bars:
+        bar_rows = [{"label": row["label"].split(" (")[0], "score": row["score"], "invert": True,
+                    "horizon": alt_top._HORIZONS.get(row["key"], "")}
+                   for row in alt["breakdown"]]
+        components.render_bar_list(bar_rows, key="alt_top_bars")
+
+    # Erste 730 Tage abschneiden - Modul-Docstring: die Perzentile sind in der
+    # Vorlaufzeit des Korbs kontaminiert (siehe alt_top.py-Kopf).
+    alt_hist = alt_top.score_history()
+    if not alt_hist.empty:
+        alt_hist = alt_hist[alt_hist.index >= alt_hist.index[0] + pd.Timedelta(days=730)]
+    components.render_score_history_chart(alt_hist, "Altcoin-Überhitzung", invert=True,
+                                          key="alt_top_history")
+
+    if alt["unavailable"]:
+        missing = ", ".join(alt_top._LABELS.get(k, k) for k in alt["unavailable"])
+        st.caption(f"Gerade nicht verfügbar (Gewichte auf die übrigen umverteilt): {missing}")
+
+    with st.expander("Wie wird das berechnet?"):
+        st.markdown(
+            "- **Alt-Ausdehnung** (35%): Median von Kurs/200-Tage-Schnitt über den Korb\n"
+            "- **Streuung im Korb** (25%): 90. Perzentil minus Median derselben Verteilung "
+            "(Blow-off-Breite)\n"
+            "- **Alt-Breite vs. BTC** (22%): Anteil des Korbs, dessen 90-Tage-Rendite BTC "
+            "übertrifft\n"
+            "- **Alt-Korb vs. BTC** (18%): Verhältnis Korb/BTC relativ zum eigenen "
+            "200-Tage-Schnitt\n\n"
+            "Jeder Baustein wird über sein Perzentil in der eigenen Historie bewertet, wie beim "
+            "Zyklus-Score. Kalibriert an vier bekannten Extremen (Top Nov. 2021, Boden Nov. 2022, "
+            "Top März/Dez. 2024 — Dez. 2017 ausgenommen: dafür existiert keine brauchbare "
+            "Altcoin-Historie) auf eine Alarm-Schwelle von 70. Alle vier bekannten Tops lagen "
+            "klar darüber, der Boden klar darunter — **aber** höhere Schwellen trennen NICHT "
+            "besser (bei 85 ist der Vorhersagewert praktisch Zufall), deshalb gibt es hier bewusst "
+            "keine mehrstufige Verkaufsleiter wie bei der Zyklus-Position."
+        )
+        st.caption(
+            "⚠️ Kalibrierung ruht auf vier historischen Ereignissen — eine Einschätzung, kein "
+            "Backtest-Beweis. Der Korb ist heute festgelegt und wird rückwirkend angewandt "
+            "(Survivorship-Verzerrung möglich)."
         )
 
-    result = st.session_state.get("cycle_ai_result")
+    return alt
+
+
+def _render_ai_summary(result: dict | None):
+    """Kompakte Kurzfassung der KI-Zyklus-Einschätzung, gerendert OBEN (siehe
+    render_market()'s summary_slot) - Details (Argumente, Beobachtungsliste,
+    Verlauf) stehen weiter unten in _render_cycle_ai().
+
+    `top_wahrscheinlichkeit` heißt hier bewusst 'KI-Top-Risiko': eine
+    unkalibrierte LLM-Einschätzung als 'Wahrscheinlichkeit' zu labeln,
+    suggeriert eine statistische Präzision, die nicht da ist - das
+    Schema-Feld selbst bleibt unverändert (steckt bereits in geloggten
+    agent_runs), nur die Anzeige ändert sich."""
     if not result:
+        st.caption("Noch keine KI-Einschätzung in dieser Sitzung - Button oben nutzen.")
         return
     if "error" in result:
         st.error(result["error"])
@@ -585,12 +765,32 @@ def _render_cycle_ai(market: str):
                    f"**KI-Einordnung:** {result['zyklus_phase']}")
         st.caption(result["phase_begruendung"])
     with c2:
-        components.render_gauge(result["top_wahrscheinlichkeit"], "Top-Wahrscheinlichkeit",
-                                key="cycle_ai_gauge", invert=True, height=180)
-    st.caption("Getrennt vom Zyklus-Score oben: der misst Überhitzung JETZT, die "
-              "Top-Wahrscheinlichkeit schätzt die Nähe zu einem Wendepunkt - beide dürfen "
-              "auseinanderlaufen, das ist erwünschte Information, kein Widerspruch.")
+        components.render_gauge(result["top_wahrscheinlichkeit"], "KI-Top-Risiko",
+                                key="cycle_ai_gauge", invert=True, height=220)
+    st.caption("Drei unabhängige Zahlen auf dieser Seite, bewusst getrennt: Zyklus-Position "
+              "misst, wie überhitzt BTC JETZT bewertet ist · Altcoin-Überhitzung misst, wie weit "
+              "der ALT-Markt gelaufen ist (beide deterministisch, kalibriert) · dieses KI-Top-"
+              "Risiko ist eine unkalibrierte Einschätzung inklusive Kontext, den kein Modell "
+              "sieht - keine statistische Wahrscheinlichkeit. Details unten. Auseinanderlaufen "
+              "ist erwünschte Information, kein Widerspruch.")
+    st.divider()
 
+
+def _render_cycle_ai(market: str):
+    """KI-Zyklus-Einschätzung, Detail-Teil: Argumente, Modell-Abweichung,
+    Beobachtungsliste, Verlauf früherer Einschätzungen - nur Krypto. Der
+    Start-Button samt Kurzfassung sitzt oben neben der Krypto/Aktien-Auswahl
+    (siehe render_market() und _render_ai_summary()); hier stehen nur die
+    Details, damit der obere Seitenbereich aufgeräumt bleibt."""
+    if market != "crypto":
+        return
+
+    result = st.session_state.get("cycle_ai_result")
+    if not result or "error" in result:
+        return  # Fehler wird bereits oben in _render_ai_summary gezeigt
+
+    st.divider()
+    st.markdown("### 🤖 KI-Zyklus-Einschätzung — Details")
     st.markdown(result["zusammenfassung"])
 
     a1, a2 = st.columns(2)
@@ -618,7 +818,7 @@ def _render_cycle_ai(market: str):
         runs = [r for r in db.list_agent_runs() if r["mode"] == "cycle"]
         if runs:
             rows = [{"Datum": r["created_at"][:16].replace("T", " "),
-                    "Top-Wahrscheinlichkeit": r["total_score"], "Phase": r["recommendation"]}
+                    "KI-Top-Risiko": r["total_score"], "Phase": r["recommendation"]}
                    for r in runs]
             st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         else:

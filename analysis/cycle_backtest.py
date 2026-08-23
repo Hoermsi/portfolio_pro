@@ -148,6 +148,22 @@ def _trades_vs_future_peak(trades: list[dict], price: pd.Series, lookforward_day
     }
 
 
+def score_history(price: pd.Series | None = None, mvrv: pd.Series | None = None,
+                  puell: pd.Series | None = None,
+                  fear_greed_30d: pd.Series | None = None) -> pd.Series:
+    """Score-Verlauf für die Verlaufs-Chart-Anzeige - dieselben Default-Fetches
+    wie run_backtest() (live laden, falls nicht injiziert), aber ohne dessen
+    Trade-Simulation. Trifft im Normalfall auf bereits warme ttl_caches, da
+    cycle.cycle_score() dieselben Quellen im selben Seitenaufruf schon lädt."""
+    price = price if price is not None else cycle.btc_price_series()
+    if price is None or price.dropna().empty:
+        return pd.Series(dtype=float)
+    mvrv = mvrv if mvrv is not None else cycle._onchain_series("mvrv-zscore")
+    puell = puell if puell is not None else cycle._onchain_series("puell-multiple")
+    fear_greed_30d = fear_greed_30d if fear_greed_30d is not None else cycle._fear_greed_30d_series()
+    return walk_forward_score(price.dropna(), mvrv, puell, fear_greed_30d)
+
+
 def run_backtest(price: pd.Series | None = None, mvrv: pd.Series | None = None,
                  puell: pd.Series | None = None, fear_greed_30d: pd.Series | None = None,
                  sell_thresholds: list[float] | None = None,

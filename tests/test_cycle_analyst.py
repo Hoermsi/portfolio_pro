@@ -232,3 +232,51 @@ def test_depot_block_notes_no_btc_when_absent(tmp_db, monkeypatch):
                         lambda: [{"symbol": "WEAK", "exit_score": 90.0, "value_eur": 100.0}])
     text = cycle_analyst._depot_block()
     assert "reines Alt-Depot, kein BTC im Bestand." in text
+
+
+# --- Markt-Temperatur- und Altcoin-Block im Prompt ---
+
+def _fake_temp():
+    return {
+        "score": 55.0, "classification": "Neutral", "coverage_pct": 100.0,
+        "breakdown": [{"key": "fear_greed", "label": "Fear & Greed Index",
+                      "text": "60/100", "weight_pct": 25.0}],
+    }
+
+
+def _fake_alt():
+    return {
+        "score": 72.0, "regime": "Alt-Überhitzung", "basket_size": 9, "limited": False,
+        "breakdown": [{"key": "alt_extension", "label": "Alt-Ausdehnung",
+                      "text": "1.30", "weight_pct": 35.0}],
+    }
+
+
+def test_build_prompt_contains_market_temp_and_alt_blocks(tmp_db):
+    prompt = cycle_analyst.build_prompt(_fake_cycle_score(), _fake_temp(), _fake_alt())
+    assert "MARKT-TEMPERATUR" in prompt
+    assert "ALTCOIN-ÜBERHITZUNG" in prompt
+    assert "Fear & Greed Index" in prompt
+    assert "Alt-Ausdehnung" in prompt
+    assert "Alt-Überhitzung" in prompt
+
+
+def test_build_prompt_without_temp_alt_says_not_supplied(tmp_db):
+    prompt = cycle_analyst.build_prompt(_fake_cycle_score())
+    assert "nicht mitgegeben" in prompt
+
+
+def test_run_cycle_analysis_with_supplied_cycle_skips_recompute(tmp_db, monkeypatch):
+    """Wird `cycle` übergeben, darf cycle.cycle_score() NICHT nochmal aufgerufen
+    werden - das würde den teuren Netz-Roundtrip verdoppeln."""
+    called = []
+    monkeypatch.setattr(cycle, "cycle_score", lambda: called.append(1) or _fake_cycle_score())
+    fake = _fake_response()
+    monkeypatch.setattr(cycle_analyst, "run_json_agent",
+                        lambda *a, **k: (fake, {"cost_usd": 0.02}, None))
+
+    result = cycle_analyst.run_cycle_analysis(
+        "claude-haiku-4-5", cycle=_fake_cycle_score(), temp=_fake_temp(), alt=_fake_alt())
+
+    assert "error" not in result
+    assert called == []  # cycle_score() wurde NICHT erneut aufgerufen

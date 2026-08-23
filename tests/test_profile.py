@@ -143,7 +143,7 @@ def test_ladder_config_wrong_length_falls_back(tmp_db):
 
 def test_cycle_progress_defaults(tmp_db):
     from core.profile import cycle_progress
-    assert cycle_progress("crypto") == {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {}}
+    assert cycle_progress("crypto") == {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {}, "acked_tiers": []}
 
 
 def test_advance_cycle_tier_ratchets_up(tmp_db):
@@ -205,7 +205,7 @@ def test_reset_cycle_progress_clears_ratchet_but_keeps_log(tmp_db):
 def test_cycle_progress_broken_json_falls_back(tmp_db):
     from core.profile import cycle_progress
     tmp_db.set_meta("cycle_progress_crypto", "{kaputt")
-    assert cycle_progress("crypto") == {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {}}
+    assert cycle_progress("crypto") == {"reached_tier": 0, "executed_pct": 0.0, "log": [], "basis": {}, "acked_tiers": []}
 
 
 def test_cycle_progress_log_capped(tmp_db):
@@ -292,3 +292,54 @@ def test_validate_ladder_stages_equal_adjacent_values_is_invalid():
     from core.profile import validate_ladder_stages
     problems = validate_ladder_stages([65, 65, 85], [25, 18, 12])
     assert any("aufsteigend" in p for p in problems)
+
+
+# --- Stufen-Quittierung (ack_cycle_tier) ---
+
+def test_ack_cycle_tier_sets_when_reached(tmp_db):
+    from core.profile import advance_cycle_tier, ack_cycle_tier, cycle_progress
+    advance_cycle_tier("crypto", 2)
+    ack_cycle_tier("crypto", 1)
+    assert cycle_progress("crypto")["acked_tiers"] == [1]
+
+
+def test_ack_cycle_tier_noop_when_not_reached(tmp_db):
+    from core.profile import advance_cycle_tier, ack_cycle_tier, cycle_progress
+    advance_cycle_tier("crypto", 1)
+    ack_cycle_tier("crypto", 2)  # Stufe 2 noch nicht erreicht
+    assert cycle_progress("crypto")["acked_tiers"] == []
+
+
+def test_ack_cycle_tier_dedupes(tmp_db):
+    from core.profile import advance_cycle_tier, ack_cycle_tier, cycle_progress
+    advance_cycle_tier("crypto", 2)
+    ack_cycle_tier("crypto", 1)
+    ack_cycle_tier("crypto", 1)
+    ack_cycle_tier("crypto", 2)
+    assert cycle_progress("crypto")["acked_tiers"] == [1, 2]
+
+
+def test_reset_cycle_progress_clears_acked_tiers(tmp_db):
+    from core.profile import advance_cycle_tier, ack_cycle_tier, cycle_progress, reset_cycle_progress
+    advance_cycle_tier("crypto", 2)
+    ack_cycle_tier("crypto", 1)
+    reset_cycle_progress("crypto")
+    assert cycle_progress("crypto")["acked_tiers"] == []
+
+
+def test_cycle_progress_acked_tiers_broken_data_falls_back_to_empty(tmp_db):
+    import json
+    from core.profile import cycle_progress
+    tmp_db.set_meta("cycle_progress_crypto", json.dumps(
+        {"reached_tier": 2, "executed_pct": 0.0, "log": [], "basis": {},
+         "acked_tiers": "kaputt"}))
+    assert cycle_progress("crypto")["acked_tiers"] == []
+
+
+def test_cycle_progress_acked_tiers_drops_out_of_range_entries(tmp_db):
+    import json
+    from core.profile import cycle_progress
+    tmp_db.set_meta("cycle_progress_crypto", json.dumps(
+        {"reached_tier": 3, "executed_pct": 0.0, "log": [], "basis": {},
+         "acked_tiers": [1, 4, 0, "2", 2]}))
+    assert cycle_progress("crypto")["acked_tiers"] == [1, 2]

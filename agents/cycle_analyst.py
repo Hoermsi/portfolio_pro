@@ -1,17 +1,23 @@
 """KI-Zyklus-Einschätzung: eigenständiger dritter Analyse-Modus (neben Einzel-
 wert- und Portfolio-Review), nur Krypto, nur auf Knopfdruck. Beantwortet drei
 Fragen: Zusammenfassung der Datenlage, wo im Zyklus wir stehen, und ob ein
-Zyklus-Top in Reichweite sein könnte.
+Zyklus-Top in Reichweite sein könnte - unter Berücksichtigung ALLER drei
+Krypto-Barometer der Marktanalyse-Seite (Markt-Temperatur, Zyklus-Score,
+Altcoin-Überhitzung), nicht nur des Zyklus-Scores.
 
 Arbeitsteilung bleibt strikt (wie beim Portfolio-Strategen): die Zahlen kommen
-deterministisch aus analysis/cycle.py - der Agent erzeugt NIE selbst den Score,
-sonst wären Reproduzierbarkeit und der Backtest wertlos. Sein Mehrwert liegt
-dort, wo das Quant-Modell blind ist: struktureller Regimewechsel (ETF-Flows,
-Regulierung, Token-Unlocks), und die Frage, ob die historische Analogie
-diesmal überhaupt trägt. `top_wahrscheinlichkeit` ist deshalb bewusst ein
-ZWEITER, vom Zyklus-Score UNABHÄNGIGER Wert: der Score misst Überhitzung JETZT,
-diese Zahl schätzt, ob ein Wendepunkt in Reichweite ist - eine Abweichung
-zwischen beiden ist Information, kein Widerspruch.
+deterministisch aus analysis/cycle.py, analysis/market_timing.py und
+analysis/alt_top.py - der Agent erzeugt NIE selbst einen Score, sonst wären
+Reproduzierbarkeit und der Backtest wertlos. Sein Mehrwert liegt dort, wo das
+Quant-Modell blind ist: struktureller Regimewechsel (ETF-Flows, Regulierung,
+Token-Unlocks), und die Frage, ob die historische Analogie diesmal überhaupt
+trägt. `top_wahrscheinlichkeit` ist deshalb bewusst ein ZWEITER, von allen drei
+Scores UNABHÄNGIGER Wert - eine Abweichung ist Information, kein Widerspruch.
+
+`cycle`/`temp`/`alt` werden von views/asset_detail.py bereits berechnet
+durchgereicht (siehe run_cycle_analysis()) statt hier ein zweites Mal
+berechnet zu werden - der Altcoin-Korb allein braucht ~10 sequentielle
+Netzabrufe, das würde sich sonst bei jedem Klick verdoppeln.
 """
 from __future__ import annotations
 
@@ -81,9 +87,20 @@ _SYSTEM = (
     "früheren Zyklen diesmal überhaupt trägt. Wenn du dem quantitativen Score "
     "widersprichst, sag klar warum (Feld modell_abweichung) - eine bloße "
     "Nacherzählung des Scores ohne eigene Einordnung ist nutzlos.\n"
-    "top_wahrscheinlichkeit ist NICHT der Zyklus-Score: der Score misst "
-    "Überhitzung JETZT, top_wahrscheinlichkeit schätzt die Nähe zu einem "
-    "Wendepunkt - beide dürfen auseinanderlaufen, das ist erwünschte Information.\n"
+    "Du bekommst DREI unabhängige, deterministisch berechnete Krypto-Barometer, "
+    "die unterschiedliche Fragen beantworten - vermische sie nicht:\n"
+    "- MARKT-TEMPERATUR: kurzfristige Stimmung, mischt sehr unterschiedliche "
+    "Zeitfenster (24h bis 200 Tage). Ein Stimmungsbild, kein Timing-Signal.\n"
+    "- ZYKLUS-INDIKATOREN: wie überhitzt BTC JETZT gegenüber seiner eigenen "
+    "mehrjährigen Historie bewertet ist.\n"
+    "- ALTCOIN-ÜBERHITZUNG: wie weit der ALT-Markt gegenüber seiner eigenen "
+    "Historie gelaufen ist, unabhängig von BTC. KEIN Top-Timer - der historische "
+    "Höchstwert dieser Kennzahl lag beim Nov-2021-Top sechs Monate VOR dem "
+    "eigentlichen Top.\n"
+    "Diese drei dürfen und werden oft auseinanderlaufen - das ist die interessante "
+    "Information, nicht ein Fehler, den du auflösen musst. top_wahrscheinlichkeit "
+    "ist KEINER der drei Scores, sondern deine eigene, unabhängige Einschätzung "
+    "der Nähe zu einem Wendepunkt.\n"
     "Wenn du einen Baustein-Wert aus den ZYKLUS-INDIKATOREN im Fließtext nennst "
     "(zusammenfassung, phase_begruendung, argumente_top/dagegen), übernimm IMMER "
     "den vollständigen Bezeichner samt Klammerzusatz aus dem Prompt (z.B. 'Fear & "
@@ -149,6 +166,33 @@ def _cycle_block(cycle: dict) -> str:
                      f"(Perzentil {row['score']:.0f}/100, Gewicht {row['weight_pct']:.0f}%)")
     if cycle["unavailable"]:
         lines.append("Nicht verfügbar (aus der Gewichtung genommen): " + ", ".join(cycle["unavailable"]))
+    return "\n".join(lines)
+
+
+def _market_temp_block(temp: dict | None) -> str:
+    if not temp or temp.get("score") is None:
+        return "Markt-Temperatur in diesem Lauf nicht mitgegeben."
+    lines = [f"Score: {temp['score']}/100 ({temp['classification']}, "
+            f"Abdeckung {temp['coverage_pct']:.0f}%)",
+            "Achtung: mischt sehr unterschiedliche Zeitfenster (24h bis 200 Tage) - "
+            "ein Stimmungsbild, kein Timing-Signal."]
+    for row in temp.get("breakdown", []):
+        lines.append(f"- {row['label']}: {row['text']} (Gewicht {row['weight_pct']:.0f}%)")
+    return "\n".join(lines)
+
+
+def _alt_top_block(alt: dict | None) -> str:
+    if not alt or alt.get("score") is None:
+        return "Altcoin-Überhitzung in diesem Lauf nicht mitgegeben."
+    limited_note = ", eingeschränkt aussagekräftig (wenige Coins verfügbar)" if alt.get("limited") else ""
+    lines = [f"Score: {alt['score']}/100 ({alt['regime']}, Korb {alt['basket_size']}/10 Coins"
+            f"{limited_note})",
+            "KEIN Top-Timer: misst, wie weit der ALT-Markt (unabhängig von BTC) gegenüber "
+            "seiner eigenen Historie gelaufen ist. Der historische Höchstwert dieser Kennzahl "
+            "lag beim Nov-2021-Top sechs Monate VOR dem eigentlichen Top - ein hoher Wert ist "
+            "kein verlässliches Timing-Signal, nur ein Ausdehnungs-Maß."]
+    for row in alt.get("breakdown", []):
+        lines.append(f"- {row['label']}: {row['text']} (Gewicht {row['weight_pct']:.0f}%)")
     return "\n".join(lines)
 
 
@@ -219,9 +263,12 @@ def _news_block() -> str:
     return "\n".join(f"- {it.get('title', '')} ({it.get('source', '')})" for it in items)
 
 
-def build_prompt(cycle: dict) -> str:
+def build_prompt(cycle: dict, temp: dict | None = None, alt: dict | None = None) -> str:
     return (
-        "== ZYKLUS-INDIKATOREN ==\n" + _cycle_block(cycle) + "\n\n"
+        "== ZYKLUS-INDIKATOREN (BTC, mehrjährig) ==\n" + _cycle_block(cycle) + "\n\n"
+        "== MARKT-TEMPERATUR (kurzfristig, gemischte Zeitfenster) ==\n"
+        + _market_temp_block(temp) + "\n\n"
+        "== ALTCOIN-ÜBERHITZUNG (unabhängig vom BTC-Zyklus) ==\n" + _alt_top_block(alt) + "\n\n"
         "== HISTORISCHER VERGLEICH (frühere Zyklus-Extreme vs. heute) ==\n"
         + _historical_comparison_block() + "\n\n"
         "== TRIGGER-PREISE DEINER EIGENEN LEITER ==\n" + _trigger_price_block(cycle) + "\n\n"
@@ -229,32 +276,41 @@ def build_prompt(cycle: dict) -> str:
         "== AKTUELLE SCHLAGZEILEN ==\n" + _news_block() + "\n\n"
         "== BACKTEST DEINER LEITER-REGEL ==\n" + _backtest_block() + "\n\n"
         "== RISIKOPROFIL DES NUTZERS ==\n" + risk_profile_prompt() + "\n\n"
-        "Gib jetzt deine Zyklus-Einschätzung."
+        "Gib jetzt deine Zyklus-Einschätzung unter Berücksichtigung ALLER drei Barometer."
     )
 
 
 def estimate_cost(model: str) -> float:
     p_in, p_out = CLAUDE_PRICING.get(model, (5.0, 25.0))
-    return 3500 / 1e6 * p_in + 900 / 1e6 * p_out
+    return 4800 / 1e6 * p_in + 900 / 1e6 * p_out
 
 
-def run_cycle_analysis(model: str, progress_cb=None) -> dict:
+def run_cycle_analysis(model: str, progress_cb=None, cycle=None, temp=None, alt=None) -> dict:
     """Holt eine KI-Zyklus-Einschätzung. Läuft ausschließlich auf expliziten
-    Aufruf (Kosten) - nie automatisch beim Seitenaufruf."""
+    Aufruf (Kosten) - nie automatisch beim Seitenaufruf.
+
+    `cycle`/`temp`/`alt`: bereits im selben Seitenaufruf berechnete Dicts
+    (analysis.cycle.cycle_score() / market_timing.market_temperature() /
+    analysis.alt_top.alt_top_score()) - werden NICHT neu berechnet, wenn
+    übergeben (Regelfall: views/asset_detail.py reicht sie durch). Ohne
+    `cycle` wird nur dieser als einzig zwingend benötigter Wert selbst
+    nachgeladen; fehlende `temp`/`alt` erscheinen im Prompt ehrlich als
+    "nicht mitgegeben" statt einen zweiten, teuren Netz-Roundtrip zu erzwingen
+    (der Altcoin-Korb allein braucht ~10 sequentielle Abrufe)."""
     def progress(msg):
         if progress_cb:
             progress_cb(msg)
 
     progress("Berechne Zyklus-Kennzahlen ...")
     from analysis import cycle as cycle_mod
-    cycle = cycle_mod.cycle_score()
+    cycle = cycle if cycle is not None else cycle_mod.cycle_score()
     if cycle["score"] is None:
         return {"error": "Zyklus-Score aktuell nicht berechenbar (zu wenig Datenlage - "
                          "BTC-Historie oder On-Chain-Quelle nicht erreichbar)."}
 
-    prompt = build_prompt(cycle)
+    prompt = build_prompt(cycle, temp, alt)
 
-    progress("KI bewertet die Zyklus-Lage ...")
+    progress("KI wertet Markt-Temperatur, Zyklus-Score und Altcoin-Überhitzung aus ...")
     parsed, usage, err = run_json_agent(_SYSTEM, prompt, model, _SCHEMA)
     if err or parsed is None:
         cost = (usage or {}).get("cost_usd", 0.0)

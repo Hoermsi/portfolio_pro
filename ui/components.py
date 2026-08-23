@@ -286,15 +286,21 @@ def format_fundamental(key: str, value) -> str:
     return f"{value:,.2f}" if isinstance(value, float) else str(value)
 
 
-def render_datenstand(coverage_pct: float, sources: str, note: str = ""):
+def render_datenstand(coverage_pct: float, sources: str, note: str = "", updated: str | None = None):
     """Konsolidierte Datenstand-Zeile (Quelle + Abdeckung) für Analysen, die aus
     mehreren freien Datenquellen rechnen - schafft Vertrauen, dass sichtbar
     bleibt, was gerade tatsächlich eingeflossen ist, statt es über mehrere
-    verstreute Captions zu erraten. "soeben abgerufen" statt echtem Zeitstempel:
-    jedes Rendern holt live neu, es gibt keinen persistierten Last-Fetch-
-    Zustand (und den extra dafür aufzubauen wäre für dieses Gewicht des
-    Themas unverhältnismäßig - siehe Docstring der aufrufenden Stelle)."""
-    st.caption(f"📊 Datenstand: soeben abgerufen · Quellen: {sources} · "
+    verstreute Captions zu erraten.
+
+    `updated`: echter Stand, wenn bekannt (z.B. das jüngste Datum einer
+    On-Chain-Serie - die steht ohnehin schon in core.db.onchain_history, keine
+    neue Infrastruktur nötig). Ohne Angabe "zuletzt aktualisiert: soeben" -
+    das ist für die MEISTEN hier gezeigten Quellen richtig (jedes Rendern holt
+    live neu), aber NICHT für alle: On-Chain-Metriken sind bis zu 24h alt
+    (ttl_cache in data/onchain.py) - deshalb reicht cycle.cycle_score() dort
+    inzwischen den echten Stand durch, statt pauschal "soeben" zu behaupten."""
+    when = updated or "soeben"
+    st.caption(f"📊 Datenstand: zuletzt aktualisiert {when} · Quellen: {sources} · "
               f"Abdeckung {coverage_pct:.0f}%" + (f" · {note}" if note else ""))
 
 
@@ -321,6 +327,31 @@ def render_price_chart(df: pd.DataFrame, fibs: dict | None = None, height: int =
     fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, x=1, xanchor="right"),
                       autosize=True)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+
+
+def render_score_history_chart(series: pd.Series, title: str, invert: bool = True,
+                               height: int = 260, key: str | None = None):
+    """Score-Verlauf (0-100) mit denselben 3 Farbbändern wie render_gauge()
+    im Hintergrund - dieselben Schwellen/Hex-Werte, damit Barometer und
+    Verlaufs-Chart optisch zusammengehören. 'Leicht gefärbt' (Nutzerwunsch) =
+    niedrige opacity, damit die Linie darüber lesbar bleibt. yaxis_range fest
+    auf [0,100], sonst würden die Bänder nicht die volle Chart-Höhe decken."""
+    series = series.dropna()
+    if series.empty or len(series) < 2:
+        st.caption(f"Noch zu wenige Datenpunkte für den {title}-Verlauf.")
+        return
+    text = _text_color()
+    bands = ([(0, 30, "#23c55e"), (30, 60, "#ffa500"), (60, 100, "#ff4b4b")] if invert
+            else [(0, 40, "#ff4b4b"), (40, 70, "#ffa500"), (70, 100, "#23c55e")])
+    fig = go.Figure()
+    for y0, y1, color in bands:
+        fig.add_hrect(y0=y0, y1=y1, fillcolor=color, opacity=0.15, line_width=0)
+    fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines",
+                             line=dict(color=text, width=2), name=title,
+                             hovertemplate="%{x|%d.%m.%Y}: %{y:.0f}<extra></extra>"))
+    fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0),
+                      yaxis_range=[0, 100], showlegend=False, autosize=True)
     st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
 
 

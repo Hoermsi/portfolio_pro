@@ -58,3 +58,32 @@ def test_month_return_pct_excludes_deposit(tmp_db):
 def test_month_return_pct_none_for_missing_history(tmp_db):
     from datetime import date
     assert performance.month_return_pct(date(2026, 2, 1)) is None
+
+
+def test_sentiment_series_empty_without_rows(tmp_db):
+    result = performance.sentiment_series("crypto:overall")
+    assert result.empty
+
+
+def test_sentiment_series_returns_sorted_values(tmp_db):
+    db = tmp_db
+    db.save_sentiment("crypto:overall", 40.0, "2026-01-02")
+    db.save_sentiment("crypto:overall", 30.0, "2026-01-01")
+    # anderer Indikator am selben Tag darf nicht mit hineinrutschen.
+    db.save_sentiment("stock:overall", 99.0, "2026-01-01")
+
+    result = performance.sentiment_series("crypto:overall")
+    assert list(result.values) == [30.0, 40.0]
+    assert result.index[0] < result.index[1]
+
+
+def test_sentiment_series_days_filter(tmp_db):
+    from datetime import date, timedelta
+    db = tmp_db
+    old_date = (date.today() - timedelta(days=100)).isoformat()
+    recent_date = (date.today() - timedelta(days=1)).isoformat()
+    db.save_sentiment("crypto:overall", 20.0, old_date)
+    db.save_sentiment("crypto:overall", 50.0, recent_date)
+
+    result = performance.sentiment_series("crypto:overall", days=10)
+    assert list(result.values) == [50.0]

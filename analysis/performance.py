@@ -190,6 +190,20 @@ def snapshot_series(asset_type: str, days: int | None = None) -> pd.DataFrame | 
     return df.sort_index()
 
 
+def sentiment_series(indicator: str, days: int | None = None) -> pd.Series:
+    """Aufgezeichneter Verlauf EINES sentiment_history-Indikators (z.B.
+    'crypto:overall') als Series (Index=Datum). Leer statt None (Muster:
+    analysis.alt_top.score_history) - Aufrufer prüft ohnehin über .empty,
+    kein zusätzlicher None-Check nötig."""
+    rows = db.list_sentiment(indicator, days)
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series(
+        [r["value"] for r in rows],
+        index=pd.to_datetime([r["snap_date"] for r in rows]),
+    ).sort_index()
+
+
 def crypto_history_series(days: int | None = None) -> tuple[pd.DataFrame | None, str]:
     """Krypto-Wertverlauf: bevorzugt die aus der Kraken-Ledger-Historie rekonstruierte
     Reihe (echte Mengen × echte Kurse), sonst die aufgezeichneten Snapshots.
