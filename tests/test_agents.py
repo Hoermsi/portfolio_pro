@@ -1,18 +1,32 @@
 from types import SimpleNamespace
 
-from agents.base import (PORTFOLIO_SENIOR_SCHEMA, SENIOR_SCHEMA, compute_cost,
-                         parse_json)
+from agents.base import (SENIOR_SCHEMA, compute_cost, parse_json,
+                         portfolio_senior_schema)
 from data.kraken import get_eur_cash, normalize_asset
 
 
 def test_portfolio_senior_schema_has_cash_vorschlaege():
-    assert "cash_vorschlaege" in PORTFOLIO_SENIOR_SCHEMA["properties"]
-    assert "cash_vorschlaege" in PORTFOLIO_SENIOR_SCHEMA["required"]
+    schema = portfolio_senior_schema("all")
+    assert "cash_vorschlaege" in schema["properties"]
+    assert "cash_vorschlaege" in schema["required"]
     # Einzelwert-Analyse bleibt ohne Cash-Feld
     assert "cash_vorschlaege" not in SENIOR_SCHEMA["properties"]
     # Item-Felder korrekt
-    item = PORTFOLIO_SENIOR_SCHEMA["properties"]["cash_vorschlaege"]["items"]
+    item = schema["properties"]["cash_vorschlaege"]["items"]
     assert set(item["required"]) == {"betrag_eur", "symbol", "asset_type", "begruendung"}
+
+
+def test_portfolio_senior_schema_restricts_asset_type_to_scope():
+    """Der eigentliche Bugfix: ein Review mit scope='crypto' darf ueber
+    'cash_vorschlaege' keinen Aktienkauf vorschlagen (und umgekehrt) - sonst
+    betrachtet ein angeblich auf Krypto beschraenktes Review implizit doch
+    das gesamte Portfolio."""
+    assert portfolio_senior_schema("all")["properties"]["cash_vorschlaege"][
+        "items"]["properties"]["asset_type"]["enum"] == ["stock", "crypto", "cash"]
+    assert portfolio_senior_schema("stock")["properties"]["cash_vorschlaege"][
+        "items"]["properties"]["asset_type"]["enum"] == ["stock", "cash"]
+    assert portfolio_senior_schema("crypto")["properties"]["cash_vorschlaege"][
+        "items"]["properties"]["asset_type"]["enum"] == ["crypto", "cash"]
 
 
 def test_strategist_schema_has_cash_hinweis():

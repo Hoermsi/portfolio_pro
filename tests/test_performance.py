@@ -37,6 +37,42 @@ def test_history_df_none_when_no_snapshots(tmp_db):
     assert performance.history_df() is None
 
 
+def test_value_n_days_ago_returns_previous_row_for_one_day(tmp_db):
+    db = tmp_db
+    db.save_snapshot("stock", 1000.0, "2026-01-01")
+    db.save_snapshot("stock", 1100.0, "2026-01-02")
+    hist = performance.history_df()
+    assert performance.value_n_days_ago(hist, "Aktien", 1) == 1000.0
+
+
+def test_value_n_days_ago_uses_nearest_earlier_snapshot_for_longer_periods(tmp_db):
+    """7 Tage vor dem letzten Datenpunkt (01-10) faellt auf 01-03 - dafuer
+    gibt es keinen Snapshot, der naechstliegende FRUEHERE ist 01-01."""
+    db = tmp_db
+    db.save_snapshot("stock", 900.0, "2026-01-01")
+    db.save_snapshot("stock", 950.0, "2026-01-05")
+    db.save_snapshot("stock", 1000.0, "2026-01-10")
+    hist = performance.history_df()
+    assert performance.value_n_days_ago(hist, "Aktien", 7) == 900.0
+
+
+def test_value_n_days_ago_none_when_history_too_short(tmp_db):
+    db = tmp_db
+    db.save_snapshot("stock", 1000.0, "2026-01-10")
+    hist = performance.history_df()
+    assert performance.value_n_days_ago(hist, "Aktien", 30) is None
+
+
+def test_value_n_days_ago_none_when_period_not_yet_reached(tmp_db):
+    """Aeltester Snapshot liegt selbst noch innerhalb der angefragten
+    Periode - keine falsche Basis erfinden, lieber 'n/a'."""
+    db = tmp_db
+    db.save_snapshot("stock", 1000.0, "2026-01-08")
+    db.save_snapshot("stock", 1050.0, "2026-01-10")
+    hist = performance.history_df()
+    assert performance.value_n_days_ago(hist, "Aktien", 30) is None
+
+
 def test_month_return_pct_excludes_deposit(tmp_db):
     """Eine Einzahlung in der Mitte des Monats darf nicht als Performance
     erscheinen - month_return_pct() muss deutlich unter der naiven

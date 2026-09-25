@@ -95,7 +95,7 @@ def _render_dashboard(scope: str):
                       labels={"Index": "Index (Start = 100)"})
         fig.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0),
                           legend=dict(orientation="h", y=1.05), autosize=True)
-        st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=f"shadow_compare_{scope}")
+        st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=f"shadow_compare_{scope}")
         if "Buy&Hold" not in comp.columns:
             st.caption("📊 Kein Buy&Hold-Vergleich verfügbar — entweder ein älteres Experiment "
                        "(vor dieser Funktion gestartet) oder keine Kurshistorie für die Startbestände.")
@@ -217,25 +217,40 @@ def _render_shadow_positions(scope: str, vals: list[dict], total: float):
                                      key=f"pie_shadow_{scope}")
 
 
+_CHANGELOG_VISIBLE = 7
+
+
+def _render_changelog_entry(entry: dict):
+    ts = entry["created_at"][:16].replace("T", " ")
+    aktion = entry["aktion"]
+    if aktion == "umschichten":
+        head = (f"🔄 **{entry['von_symbol']} → {entry['nach_symbol']}** · "
+                f"{entry['wert_eur']:,.2f} €")
+    elif aktion == "verkaufen":
+        head = f"🔴 **{entry['von_symbol']} verkauft** · {entry['wert_eur']:,.2f} €"
+    elif aktion == "kaufen":
+        head = f"🟢 **{entry['nach_symbol']} gekauft** · {entry['wert_eur']:,.2f} €"
+    else:
+        head = f"⚪ **{entry['von_symbol']} gehalten**"
+    st.markdown(head)
+    st.caption(f"{ts} · {entry.get('notiz', '')}")
+
+
 def _render_changelog(scope: str):
     log = shadow.db.list_shadow_log(scope, 200)
     if not log:
         st.caption("Noch keine Änderungen — hole dir oben die ersten KI-Anweisungen.")
         return
-    for entry in log:
-        ts = entry["created_at"][:16].replace("T", " ")
-        aktion = entry["aktion"]
-        if aktion == "umschichten":
-            head = (f"🔄 **{entry['von_symbol']} → {entry['nach_symbol']}** · "
-                    f"{entry['wert_eur']:,.2f} €")
-        elif aktion == "verkaufen":
-            head = f"🔴 **{entry['von_symbol']} verkauft** · {entry['wert_eur']:,.2f} €"
-        elif aktion == "kaufen":
-            head = f"🟢 **{entry['nach_symbol']} gekauft** · {entry['wert_eur']:,.2f} €"
-        else:
-            head = f"⚪ **{entry['von_symbol']} gehalten**"
-        st.markdown(head)
-        st.caption(f"{ts} · {entry.get('notiz', '')}")
+    # list_shadow_log ist neueste zuerst (ORDER BY id DESC) - die ersten
+    # _CHANGELOG_VISIBLE sind damit bereits die letzten N Einträge.
+    for entry in log[:_CHANGELOG_VISIBLE]:
+        _render_changelog_entry(entry)
+
+    rest = log[_CHANGELOG_VISIBLE:]
+    if rest:
+        with st.expander(f"🗂️ Ältere Änderungen ({len(rest)})"):
+            for entry in rest:
+                _render_changelog_entry(entry)
 
 
 def _render_recommendation_history(scope: str):

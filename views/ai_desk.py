@@ -31,8 +31,9 @@ def render():
             "📈 Nur Aktien": "stock",
             "🪙 Nur Krypto": "crypto",
         }
-        scope_choice = st.radio("Was soll analysiert werden?",
-                                list(scope_labels.keys()), horizontal=True)
+        scope_options = list(scope_labels.keys())
+        scope_choice = st.segmented_control("Was soll analysiert werden?", scope_options,
+                                            default=scope_options[0]) or scope_options[0]
         scope = scope_labels[scope_choice]
 
         est = senior_manager.estimate_cost("portfolio", spec_model, senior_model)

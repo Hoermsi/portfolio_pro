@@ -58,10 +58,23 @@ def apply_theme(theme: str = "dark"):
       [data-testid="stForm"] {border-color: #26344d;}
       [data-testid="stCaptionContainer"], [data-testid="stWidgetLabel"] p {color: #aab7cc;}
       hr {border-color: #26344d;}
-      button[kind="primary"] {background-color: #e5edf9; color: #0b1120; border-color: #e5edf9;}
-      button[kind="primary"]:hover {background-color: #c7d2e3; border-color: #c7d2e3; color: #0b1120;}
-      button[kind="primary"]:focus-visible {outline: 2px solid #6ee7b7; outline-offset: 2px;}
-      button[kind="primary"]:disabled {background-color: #26344d; border-color: #26344d; color: #aab7cc; opacity: .6;}
+      /* primaryFormSubmit (st.form_submit_button(type="primary")) faellt unter
+         einem ANDEREN kind-Wert als primary - ohne diese Ergaenzung blieb es
+         bei Streamlits ungestyltem Default-Rot (#ff4b4b), identisch mit Data
+         Red/Notbremse-Rot, fuer voellig harmlose Aktionen wie "Speichern". */
+      button[kind="primary"], button[kind="primaryFormSubmit"] {background-color: #e5edf9; color: #0b1120; border-color: #e5edf9;}
+      button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover {background-color: #c7d2e3; border-color: #c7d2e3; color: #0b1120;}
+      button[kind="primary"]:focus-visible, button[kind="primaryFormSubmit"]:focus-visible {outline: 2px solid #6ee7b7; outline-offset: 2px;}
+      button[kind="primary"]:disabled, button[kind="primaryFormSubmit"]:disabled {background-color: #26344d; border-color: #26344d; color: #aab7cc; opacity: .6;}
+      /* st.segmented_control markiert die aktive Option standardmaessig in
+         Streamlits Default-Rot (#ff4b4b) - identisch mit Data Red/Notbremse-
+         Rot (DESIGN.md). Eine reine Zeitraum-Auswahl ist keine Warnung/
+         Verlust-Anzeige, deshalb hier auf die neutrale Text-Primary-Farbe
+         umgestellt statt eine zweite Bedeutung fuer Rot einzufuehren. */
+      [data-testid="stBaseButton-segmented_controlActive"] {
+        border-color: #e5edf9 !important; color: #e5edf9 !important;
+        background-color: rgba(229, 237, 249, 0.12) !important;
+      }
     """ if dark else """
       [data-testid="stAppViewContainer"], [data-testid="stHeader"] {background: #f7f9fc; color: #182235;}
       [data-testid="stSidebar"] {background: #ffffff; color: #182235;}
@@ -76,19 +89,43 @@ def apply_theme(theme: str = "dark"):
       [data-testid="stForm"] {border-color: #dbe4f0;}
       [data-testid="stCaptionContainer"], [data-testid="stWidgetLabel"] p {color: #64748b;}
       hr {border-color: #dbe4f0;}
-      button[kind="primary"] {background-color: #182235; color: #ffffff; border-color: #182235;}
-      button[kind="primary"]:hover {background-color: #2b3a52; border-color: #2b3a52; color: #ffffff;}
-      button[kind="primary"]:focus-visible {outline: 2px solid #6ee7b7; outline-offset: 2px;}
-      button[kind="primary"]:disabled {background-color: #dbe4f0; border-color: #dbe4f0; color: #64748b; opacity: .6;}
+      button[kind="primary"], button[kind="primaryFormSubmit"] {background-color: #182235; color: #ffffff; border-color: #182235;}
+      button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover {background-color: #2b3a52; border-color: #2b3a52; color: #ffffff;}
+      button[kind="primary"]:focus-visible, button[kind="primaryFormSubmit"]:focus-visible {outline: 2px solid #6ee7b7; outline-offset: 2px;}
+      button[kind="primary"]:disabled, button[kind="primaryFormSubmit"]:disabled {background-color: #dbe4f0; border-color: #dbe4f0; color: #64748b; opacity: .6;}
+      [data-testid="stBaseButton-segmented_controlActive"] {
+        border-color: #182235 !important; color: #182235 !important;
+        background-color: rgba(24, 34, 53, 0.08) !important;
+      }
     """
     st.markdown("""
     <style>
       /* padding-top muss den fixierten stHeader (60px) überragen, sonst wird das
          allererste Element der Seite (.pp-eyebrow) darunter verdeckt/abgeschnitten */
       .block-container {max-width: 1420px; padding-top: 5rem; padding-bottom: 3rem;}
+      /* Lange zusammengesetzte deutsche Seitentitel ohne Bindestrich (z.B.
+         "Einzelwertanalyse") brechen auf schmalen Viewports sonst mitten im
+         Wort um (ein einzelner Buchstabe faellt in die naechste Zeile) -
+         hyphens: auto erlaubt stattdessen einen sprachlich korrekten
+         Trennstrich. Braucht ein gesetztes lang="de" (siehe
+         _bump_resize_on_tab_switch()), sonst ignorieren Browser die Regel. */
+      h1 {hyphens: auto; -webkit-hyphens: auto; overflow-wrap: break-word;}
       [data-testid="stMetric"] {border: 1px solid; border-radius: 14px; padding: 1rem 1.1rem;}
       [data-testid="stMetricLabel"] {font-size: .88rem;}
       [data-testid="stMetricValue"] {font-weight: 650;}
+      /* Dashboard: Gesamtvermögen bewusst groesser als jede andere Kennzahl -
+         Hierarchie ueber Groesse/Gewicht statt einer neuen Akzentfarbe
+         (DESIGN.md Typography-Prinzip), volle Breite statt 1-von-4-Spalten. */
+      div[class*="st-key-dash_total_wealth"] [data-testid="stMetricLabel"] {font-size: 1.05rem;}
+      div[class*="st-key-dash_total_wealth"] [data-testid="stMetricValue"] {font-size: 2.75rem;}
+      /* Der 5-Buttons-Zeitraum-Regler bricht auf schmalen Viewports auf
+         4+1 um - ohne dies bleibt der letzte Button ("1 Jahr") winzig und
+         allein in der zweiten Zeile. flex-grow verteilt die Restbreite
+         JE ZEILE (flex-wrap erzeugt mehrere Flex-Linien), die zweite Zeile
+         bekommt dadurch automatisch volle Breite statt einer Restluecke. */
+      div[class*="st-key-dashboard_delta_period"] [data-testid^="stBaseButton-segmented_control"] {
+        flex: 1 1 auto;
+      }
       div[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 14px;}
       .pp-eyebrow {color: #6ee7b7; font-size: .78rem; font-weight: 700;
         letter-spacing: .08em; text-transform: uppercase; margin-bottom: .25rem;}
@@ -96,10 +133,99 @@ def apply_theme(theme: str = "dark"):
         padding: 1rem 1.1rem; height: 100%;}
       .pp-positive {color: #4ade80; font-weight: 650;}
       .pp-negative {color: #fb7185; font-weight: 650;}
+      /* Der Abstand nach unten muss die schwebende Dataframe-Toolbar (Auge/
+         Download/Suche/Vollbild, von Streamlit automatisch ueber JEDER
+         st.dataframe eingeblendet) frei lassen - sie sitzt einige Pixel
+         ueber dem eigentlichen Tabellenrand und ueberlappt sonst den Text. */
+      .pp-scroll-hint {display: none; font-size: .85rem; margin: 0 0 1.75rem;}
       [data-testid="stSidebar"] {border-right: 1px solid;}
     """ + palette + """
+      /* Notbremse: einzige Stelle, an der Data Red als Flaeche statt als
+         G/V-Text auftritt - siehe DESIGN.md, Named Rule "Notbremse-Rot".
+         Eigene Regel statt button[kind="primary"], damit der Kill-Switch-
+         Button bewusst secondary bleibt (keine Verwechslung mit anderen
+         primaeren Aktionen) und trotzdem eindeutig als Notbremse auffaellt. */
+      div[class*="st-key-bot_kill_action"] button {
+        background-color: #ff4b4b; border-color: #ff4b4b; color: #fff;
+      }
+      div[class*="st-key-bot_kill_action"] button:hover {
+        background-color: #e23c3c; border-color: #e23c3c; color: #fff;
+      }
+      div[class*="st-key-bot_kill_action"] button:focus-visible {
+        outline: 2px solid #6ee7b7; outline-offset: 2px;
+      }
+      /* Mobile (<=640px, Streamlits eigener Stapel-Schwellenwert fuer st.columns):
+         nur Feinschliff dort, wo natives Stapeln allein nicht reicht - keine
+         Aenderung an Farben/Radius/Card-Regeln, die gelten auf jeder Breite. */
+      @media (max-width: 640px) {
+        .block-container {padding-left: 1rem; padding-right: 1rem; padding-bottom: 1.5rem;}
+        [data-testid="stMetric"] {padding: .75rem .85rem;}
+        /* horizontale Radios (Konto-/Zeitraum-Filter) brechen sonst nicht um
+           und laufen bei mehr als ~3 Optionen ueber den Bildschirmrand hinaus */
+        [data-testid="stRadio"] div[role="radiogroup"] {flex-wrap: wrap;}
+        /* Fallback gegen das Plotly-"responsive"-Clipping: lieber ein
+           Scrollbalken als ein still abgeschnittener Chart-Bereich */
+        [data-testid="stPlotlyChart"] {overflow-x: auto;}
+        /* Cash-Schnell-Buttons (views/cash.py): Streamlit stapelt Spalten
+           unterhalb dieses Breakpoints IMMER auf 100% Breite, egal wie
+           viele es sind - hier gezielt aufgehoben, damit die 2 markierten
+           4er-Reihen echte 4-Spalten-Raster bleiben statt zu 8 einzeln
+           gestapelten Vollbreite-Buttons zu werden. */
+        div[class*="st-key-cash_quick_row"] [data-testid="stColumn"] {
+          min-width: 0 !important; flex: 1 1 0 !important;
+        }
+        /* st.tabs mit 4+ Reitern (z.B. Einstellungen: Zielallokation/API-Keys/
+           KI & Kosten/Daten/Updates) ueberlaufen auf 375px nur knapp (~12px) -
+           der 16px-Standardabstand zwischen Reitern allein reicht schon, um
+           den letzten Reiter ("Updates") ganz aus dem sichtbaren Bereich zu
+           schieben. Reiter sind zwar bereits horizontal wischbar (Streamlit
+           setzt overflow-x:scroll selbst), aber ohne jeden visuellen Hinweis -
+           der schmalere Abstand vermeidet das Ueberlaufen meist ganz, statt
+           nur auf "entdeckt der Nutzer das Wischen" zu hoffen. */
+        [data-baseweb="tab-list"] {gap: 8px !important;}
+        [data-testid="stTab"] {font-size: .85rem;}
+        .pp-scroll-hint {display: block;}
+      }
     </style>
     """, unsafe_allow_html=True)
+    _bump_resize_on_tab_switch()
+
+
+def _bump_resize_on_tab_switch():
+    """Plotly-Charts in st.tabs bleiben sonst auf ihrer Mount-Breite haengen.
+
+    st.tabs() haelt beide Panels im DOM und blendet das inaktive nur per
+    display:none aus. Ein Plotly-Chart, der WAEHREND display:none gemountet
+    wird, bekommt keine gueltige Container-Breite und faellt auf Plotlys
+    700px-Default zurueck; da display:none->block kein 'resize'-Event
+    ausloest, bleibt "responsive: True" wirkungslos. Betrifft jede
+    Bildschirmbreite, faellt aber auf schmalen Handy-Viewports (Container
+    z.B. 343px) am staerksten auf - der Chart ragt dann weit ueber den Rand
+    hinaus. Fix: ein <script> im Streamlit-eigenen iframe (components.v1.html
+    ist die einzige Stelle, an der st.markdown() tatsaechlich JS ausfuehrt)
+    horcht im Eltern-Dokument auf Tab-Klicks und stoesst danach ein echtes
+    'resize'-Event an, das Plotlys ResizeObserver zur Neuberechnung bewegt.
+    Guard per Flag auf window.parent, da apply_theme() bei jedem Rerun neu
+    aufgerufen wird und sonst bei jedem Klick doppelte/dreifache Handler
+    anhäufen wuerden.
+
+    Setzt hier auch document.lang = 'de' (Streamlit liefert kein lang-Attribut
+    auf dem <html>-Tag) - ohne das ignorieren Browser die "hyphens: auto"-Regel
+    auf h1 (siehe apply_theme()'s CSS) fuer lange zusammengesetzte Seitentitel."""
+    st.components.v1.html("""
+    <script>
+      window.parent.document.documentElement.lang = 'de';
+      if (!window.parent.__ppTabResizeBound) {
+        window.parent.__ppTabResizeBound = true;
+        window.parent.document.addEventListener('click', function(e) {
+          if (e.target.closest('[role="tab"]')) {
+            setTimeout(function() { window.parent.dispatchEvent(new Event('resize')); }, 60);
+            setTimeout(function() { window.parent.dispatchEvent(new Event('resize')); }, 300);
+          }
+        }, true);
+      }
+    </script>
+    """, height=0)
 
 
 def page_header(eyebrow: str, title: str, subtitle: str | None = None):
@@ -108,6 +234,20 @@ def page_header(eyebrow: str, title: str, subtitle: str | None = None):
     st.title(title)
     if subtitle:
         st.markdown(f'<div class="pp-subtle">{subtitle}</div>', unsafe_allow_html=True)
+
+
+def render_mobile_scroll_hint():
+    """Hinweis ueber einer spaltenreichen st.dataframe, dass sie horizontal
+    wischbar ist - NUR auf schmalen Viewports sichtbar (.pp-scroll-hint in
+    apply_theme()). st.dataframe basiert auf einem Canvas-Grid (glide-data-
+    grid): auf 375px zeigt es oft nur die ersten 2-3 Spalten, der Rest ist
+    zwar wischbar, aber ohne jeden sichtbaren Hinweis darauf - Nutzer haetten
+    sonst keinen Grund anzunehmen, dass ueberhaupt mehr Spalten existieren.
+    Auf Desktop, wo die Tabelle ohnehin komplett sichtbar ist, waere derselbe
+    Hinweis nur Ablenkung ohne Zweck (siehe PRODUCT.md "Daten vor
+    Dekoration") - deshalb per CSS defaultmaessig ausgeblendet."""
+    st.markdown('<p class="pp-scroll-hint pp-subtle">→ Tabelle nach rechts wischen für weitere Spalten.</p>',
+               unsafe_allow_html=True)
 
 
 def gauge_color(score: float, invert: bool = False) -> str:
@@ -163,7 +303,7 @@ def render_gauge(score: float, title: str = "Gesamt-Rating", key: str | None = N
     fig.update_layout(height=height,
                       margin=dict(t=25 if compact else 50, b=0, l=5 if compact else 20, r=5 if compact else 20),
                       paper_bgcolor="rgba(0,0,0,0)", autosize=True)
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 def _shade(hex_color: str, factor: float) -> str:
@@ -216,7 +356,7 @@ def render_ladder_gauge(score: float, title: str, buy_thresholds: list[float],
     fig.update_layout(height=height,
                       margin=dict(t=25 if compact else 50, b=0, l=5 if compact else 20, r=5 if compact else 20),
                       paper_bgcolor="rgba(0,0,0,0)", autosize=True)
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 def render_bar_list(rows: list[dict], key: str | None = None, height: int | None = None):
@@ -252,7 +392,7 @@ def render_bar_list(rows: list[dict], key: str | None = None, height: int | None
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False, autosize=True,
     )
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 _FUNDAMENTAL_FORMATTERS = {
@@ -327,7 +467,7 @@ def render_price_chart(df: pd.DataFrame, fibs: dict | None = None, height: int =
     fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, x=1, xanchor="right"),
                       autosize=True)
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 def render_score_history_chart(series: pd.Series, title: str, invert: bool = True,
@@ -352,7 +492,7 @@ def render_score_history_chart(series: pd.Series, title: str, invert: bool = Tru
                              hovertemplate="%{x|%d.%m.%Y}: %{y:.0f}<extra></extra>"))
     fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0),
                       yaxis_range=[0, 100], showlegend=False, autosize=True)
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 def render_allocation_pie(items: list[dict], names: str, values: str, title: str,
@@ -366,7 +506,7 @@ def render_allocation_pie(items: list[dict], names: str, values: str, title: str
     fig.update_traces(textposition="inside", textinfo="percent", hovertemplate="%{label}<br>%{value:,.2f} €<br>%{percent}<extra></extra>")
     fig.update_layout(legend=dict(orientation="h", y=-0.12), height=330,
                       margin=dict(l=10, r=10, t=45, b=35), autosize=True)
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 def render_allocation_bars(items: list[dict], title: str, key: str | None = None):
@@ -382,7 +522,7 @@ def render_allocation_bars(items: list[dict], title: str, key: str | None = None
                       hovertemplate="%{y}<br>%{x:,.2f} €<extra></extra>")
     fig.update_layout(height=330, margin=dict(l=0, r=30, t=45, b=10),
                       xaxis_title=None, yaxis_title=None, showlegend=False, autosize=True)
-    st.plotly_chart(fig, width="stretch", config={"responsive": True}, key=key)
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False}, key=key)
 
 
 def render_usage(usage: dict):

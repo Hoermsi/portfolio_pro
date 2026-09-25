@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-python make_share_copy.py %*
+py make_share_copy.py %*
 pause

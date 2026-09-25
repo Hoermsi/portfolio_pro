@@ -9,4 +9,5 @@ python-dotenv>=1.0
 anthropic>=0.80
 packaging>=23.0
 reportlab>=4.0
+hyperliquid-python-sdk>=0.24
 pytest>=8.0

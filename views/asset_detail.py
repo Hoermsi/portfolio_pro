@@ -26,15 +26,15 @@ def _market_choice(widget_key: str) -> str:
     """Krypto/Aktien-Auswahl, manuell über session_state synchronisiert statt
     über den Widget-eigenen `key`-Mechanismus: der überlebt einen Wechsel
     zwischen st.navigation-Seiten in dieser Streamlit-Version NICHT
-    zuverlässig (das Radio springt sonst beim Seitenwechsel auf "Krypto"
-    zurück, live getestet) - dasselbe Problem, das `detail_symbol` weiter
+    zuverlässig (das Auswahl-Widget springt sonst beim Seitenwechsel auf
+    "Krypto" zurück, live getestet) - dasselbe Problem, das `detail_symbol` weiter
     unten schon über manuelles session_state-Lesen/-Schreiben umgeht statt
     über einen Widget-`key`. Jede Seite bekommt einen EIGENEN `widget_key`
     (keine Kollision zwischen den Seiten), der eigentliche Wert lebt im
     gemeinsamen Klartext-Key 'market_choice'."""
     default_label = st.session_state.get("market_choice", "Krypto")
-    label = st.radio("Markt", ["Krypto", "Aktien"], horizontal=True,
-                     index=0 if default_label == "Krypto" else 1, key=widget_key)
+    label = st.segmented_control("Markt", ["Krypto", "Aktien"], default=default_label,
+                                 key=widget_key) or default_label
     st.session_state["market_choice"] = label
     return "crypto" if label == "Krypto" else "stock"
 

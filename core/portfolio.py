@@ -26,6 +26,45 @@ def valued_positions(asset_type: str) -> list[Valuation]:
     return [value_position(p) for p in positions]
 
 
+def crypto_bot_valuation() -> Valuation | None:
+    """Synthetische Position 'Krypto Bot' - bündelt den aktuellen Wert des
+    Hyperliquid-Trading-Bot-Kontos zu EINER Zeile fürs Krypto-Depot, statt
+    seine einzelnen Positionen (die core.bot bereits separat in bot_positions
+    verwaltet) im normalen Depot aufzulisten. None, solange der Bot nicht
+    aktiv ist oder noch keine Equity-Messung vorliegt.
+
+    Bewusst NICHT Teil von valued_positions() - core.shadow.init_from_real()
+    ruft genau diese Funktion auf, um das KI-Portfolio zu befüllen, und
+    könnte mit dieser Pseudo-Position nichts anfangen (kein handelbares
+    Symbol, kein Kurs). Aufrufer (views/dashboard.py, views/positions.py)
+    hängen sie explizit an die Krypto-Liste an.
+
+    id=-1 markiert die Position als nicht editierbar/löschbar - echte
+    DB-Ids sind immer positiv (SQLite AUTOINCREMENT). views/positions.py
+    blendet Zeilen mit id<=0 aus dem Bearbeiten/Löschen-Formular aus, sonst
+    würde ein Speichern dort versuchen, eine echte Position mit Symbol
+    'BOT' anzulegen (kein bei CoinGecko auflösbarer Coin).
+    """
+    from core import bot as bot_module
+    from data import fx as fx_data
+
+    if not bot_module.is_active():
+        return None
+    summary = bot_module.performance_summary()
+    if not summary:
+        return None
+    rate = fx_data.get_fx_to_eur("USD") or 1.0
+    value_eur = summary["current_eur"]
+    # Einstand so gewählt, dass G/V (value_eur - cost_basis) exakt dem
+    # Ein-/Auszahlungs-bereinigten PNL der Trading-Bot-Seite entspricht -
+    # keine zweite, abweichende Gewinn/Verlust-Zahl für denselben Bot.
+    cost_basis_eur = value_eur - summary["pnl_usd"] * rate
+    position = Position(id=-1, symbol="BOT", asset_type="crypto", name="Krypto Bot",
+                        currency="USD", quantity=1.0, buy_price_eur=cost_basis_eur,
+                        category="Hyperliquid", source="bot")
+    return evaluate(position, value_eur, 1.0)
+
+
 def total_value(valuations: list[Valuation]) -> float:
     return sum(v.value_eur or 0.0 for v in valuations)
 

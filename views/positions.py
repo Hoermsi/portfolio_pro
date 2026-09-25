@@ -5,7 +5,7 @@ import streamlit as st
 
 from analysis import alerts, performance
 from core import db
-from core.portfolio import all_priceable, total_value, valued_positions
+from core.portfolio import all_priceable, crypto_bot_valuation, total_value, valued_positions
 from data import crypto as crypto_data
 from data import stocks as stock_data
 from ui import components
@@ -56,6 +56,13 @@ def render_positions_table(asset_type: str) -> None:
     """Bewertete Positionstabelle + Verteilungs-Chart + Bearbeiten/Löschen."""
     with st.spinner("Lade Kurse ..."):
         all_vals = valued_positions(asset_type)
+    if asset_type == "crypto":
+        # Aktuellen Wert des Hyperliquid-Trading-Bot-Kontos als EINE Zeile
+        # anhängen, statt seiner einzelnen Positionen (core.bot verwaltet die
+        # separat in bot_positions) - siehe core.portfolio.crypto_bot_valuation().
+        bot_val = crypto_bot_valuation()
+        if bot_val:
+            all_vals = all_vals + [bot_val]
     if not all_vals:
         st.info("Noch keine Positionen erfasst.")
         return
@@ -87,9 +94,10 @@ def render_positions_table(asset_type: str) -> None:
     categories = sorted({v.position.category for v in all_vals})
     vals = all_vals
     if len(categories) > 1:
-        choice = st.radio("Ansicht", ["🌐 Alle Konten"] + categories,
-                          horizontal=True, key=f"filter_{asset_type}",
-                          label_visibility="collapsed")
+        view_options = ["🌐 Alle Konten"] + categories
+        choice = st.segmented_control("Ansicht", view_options, default=view_options[0],
+                                      key=f"filter_{asset_type}",
+                                      label_visibility="collapsed") or view_options[0]
         if choice != "🌐 Alle Konten":
             vals = [v for v in all_vals if v.position.category == choice]
 
@@ -144,9 +152,19 @@ def render_positions_table(asset_type: str) -> None:
               .format({"Wert (€)": "{:,.2f}", "Einstand (€)": "{:,.2f}",
                        "G/V (€)": "{:+,.2f}", "G/V (%)": "{:+.1f}",
                        "Kurs (€)": "{:,.4f}", "Menge": "{:,.6g}"}, na_rep="—"))
+    components.render_mobile_scroll_hint()
     st.dataframe(styled, width="stretch", hide_index=True,
-                 column_config={"Anteil (%)": st.column_config.ProgressColumn("Anteil", min_value=0, max_value=100,
-                                                                                format="%.1f %%")})
+                 column_config={
+                     "Anteil (%)": st.column_config.ProgressColumn("Anteil", min_value=0, max_value=100,
+                                                                     format="%.1f %%"),
+                     # Breiten-Hinweise fuer die 11 Spalten: Symbol/Wert/G-V bleiben im
+                     # sichtbaren Bereich eines Handy-Viewports, Rest kann nach rechts
+                     # aus dem Fold scrollen statt gleichmaessig gequetscht zu werden.
+                     "Name": st.column_config.TextColumn("Name", width="small"),
+                     "Kategorie": st.column_config.TextColumn("Kategorie", width="small"),
+                     "Einstand (€)": st.column_config.NumberColumn("Einstand (€)", width="small"),
+                     "Status": st.column_config.TextColumn("Status", width="small"),
+                 })
 
     col_pie, col_hist = st.columns(2)
     with col_pie:
@@ -159,7 +177,16 @@ def render_positions_table(asset_type: str) -> None:
         _render_history_chart(asset_type)
 
     with st.expander("Position bearbeiten oder löschen"):
-        options = {f"{v.position.symbol} · {v.position.category}": v.position for v in vals}
+        # id<=0 markiert eine synthetische Zeile (core.portfolio.
+        # crypto_bot_valuation() vergibt id=-1) - echte DB-Ids sind immer
+        # positiv. Ohne diesen Filter würde "Speichern" versuchen, eine
+        # echte Position mit Symbol 'BOT' anzulegen (kein bei CoinGecko
+        # auflösbarer Coin).
+        options = {f"{v.position.symbol} · {v.position.category}": v.position
+                  for v in vals if v.position.id > 0}
+        if not options:
+            st.caption("Keine bearbeitbare Position in dieser Auswahl.")
+            return
         sel = st.selectbox("Position wählen", list(options.keys()), key=f"edit_sel_{asset_type}")
         pos = options[sel]
         c1, c2, c3 = st.columns([1, 1, 1])
@@ -195,9 +222,11 @@ def _render_history_chart(asset_type: str) -> None:
     """Wertverlauf der Asset-Klasse mit wählbarem Zeitbereich.
     Krypto nutzt bevorzugt die aus der Kraken-Historie rekonstruierte Reihe."""
     st.markdown("**📈 Wertverlauf**")
-    choice = st.radio("Zeitbereich", list(performance.PERIODS.keys()),
-                      horizontal=True, index=3, key=f"histrange_{asset_type}",
-                      label_visibility="collapsed")
+    period_options = list(performance.PERIODS.keys())
+    default_period = period_options[3]
+    choice = st.segmented_control("Zeitbereich", period_options, default=default_period,
+                                  key=f"histrange_{asset_type}",
+                                  label_visibility="collapsed") or default_period
     days = performance.PERIODS[choice]
     if asset_type == "crypto":
         df, quelle = performance.crypto_history_series(days)
@@ -213,7 +242,8 @@ def _render_history_chart(asset_type: str) -> None:
     fig.update_traces(line_color="#23c55e")
     fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
                       xaxis_title=None)
-    st.plotly_chart(fig, width="stretch", key=f"history_{asset_type}")
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False},
+                    key=f"history_{asset_type}")
     if quelle == "rekonstruiert":
         st.caption("Echter Verlauf aus deiner Kraken-Historie (tatsächliche Mengen × "
                    "historische Kurse; nur Kraken-Bestände).")

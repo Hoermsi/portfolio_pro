@@ -35,6 +35,21 @@ def test_save_and_remove_api_key(tmp_db, monkeypatch):
     assert db.get_meta("anthropic_api_key") is None
 
 
+def test_telegram_credentials_env_only(tmp_db, monkeypatch):
+    """Wie hyperliquid_credentials() bewusst OHNE DB-Fallback - Betriebs-
+    geheimnis des Runner-Prozesses, kein Nutzer-Setting über die UI."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+    db.set_meta("telegram_bot_token", "db-value")  # darf nicht gelesen werden
+    assert config.telegram_credentials() == ("t", "42")
+
+
+def test_telegram_credentials_none_when_unset(tmp_db, monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    assert config.telegram_credentials() == (None, None)
+
+
 def test_no_db_file_is_not_created(tmp_path, monkeypatch):
     """Fehlt die DB-Datei, wird sie beim Key-Lesen NICHT angelegt (nur .env-Fallback)."""
     missing = tmp_path / "nope.db"

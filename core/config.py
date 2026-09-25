@@ -82,6 +82,28 @@ def kraken_keys() -> tuple[str | None, str | None]:
             _meta_or_env("kraken_api_secret", "KRAKEN_API_SECRET"))
 
 
+def hyperliquid_credentials() -> tuple[str | None, str | None]:
+    """Trading-Bot: Agent-Wallet-Key + Konto-Adresse.
+
+    Bewusst NUR os.getenv(), kein _meta_or_env()-Fallback über die DB: Anders
+    als der read-only Kraken-Key hat der Agent-Wallet-Key Verfügungsgewalt
+    über echtes Geld (er kann handeln, nicht auszahlen, aber ein geleakter
+    Key soll erst gar keine Chance haben, im Klartext in portfolio.db und
+    damit in jedem Backup/.bak zu landen). Die Konto-Adresse ist öffentlich
+    (keine Geheimhaltung nötig), bleibt hier trotzdem im selben env-only
+    Pfad wie der Key - beide gehören zusammen und werden nie getrennt gebraucht.
+    """
+    return (os.getenv("HYPERLIQUID_AGENT_KEY"), os.getenv("HYPERLIQUID_ACCOUNT_ADDRESS"))
+
+
+def telegram_credentials() -> tuple[str | None, str | None]:
+    """Trading-Bot-Benachrichtigungen (core/notify.py). Env-only wie
+    hyperliquid_credentials() - kein geleaktes Geld-Risiko wie beim
+    Agent-Key, aber ein reines Betriebsgeheimnis des Runner-Prozesses,
+    kein Nutzer-Setting über die UI."""
+    return (os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID"))
+
+
 # Meta-Schlüssel, unter denen in-App eingegebene Keys liegen (für Settings/Onboarding).
 API_KEY_META = {
     "anthropic": "anthropic_api_key",
@@ -104,6 +126,7 @@ CLAUDE_MODELS = {
     "Haiku 4.5 (schnell & günstig)": "claude-haiku-4-5",
     "Sonnet 5 (ausgewogen)": "claude-sonnet-5",
     "Opus 4.8 (max. Qualität)": "claude-opus-4-8",
+    "Opus 5 (neuestes Modell)": "claude-opus-5",
 }
 
 # Preise pro 1 Mio. Token in USD: (Input, Output)
@@ -111,6 +134,7 @@ CLAUDE_PRICING = {
     "claude-haiku-4-5": (1.0, 5.0),
     "claude-sonnet-5": (3.0, 15.0),
     "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-5": (5.0, 25.0),
 }
 
 DEFAULT_SPECIALIST_MODEL = "claude-haiku-4-5"

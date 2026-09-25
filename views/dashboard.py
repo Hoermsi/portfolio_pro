@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from analysis import alerts, performance
-from core.portfolio import all_priceable, total_value, valued_positions
+from core.portfolio import all_priceable, crypto_bot_valuation, total_value, valued_positions
 from core.profile import risk_profile, target_allocation
 from ui import components
 
@@ -33,10 +33,22 @@ _C_ACTUAL = "#34d399"    # historischer Ist-Wert (Projektion)
 _C_PROJ = "#8894a3"      # Projektionslinie (gestrichelt, neutral)
 
 
-def _previous_total(history: pd.DataFrame | None) -> float | None:
-    if history is None or len(history) < 2:
+# Schnellauswahl für die Metric-Deltas oben auf dem Dashboard - vorher zeigte
+# jede Kennzahl kommentarlos "eine Änderung" (Gesamtvermögen: seit dem letzten
+# Snapshot, Aktien/Krypto/Cash: Anteil am Gesamtvermögen statt überhaupt einer
+# zeitlichen Veränderung), ohne dass der Zeitraum irgendwo benannt war.
+_DELTA_PERIODS = {"Tag": 1, "1 Woche": 7, "1 Monat": 30, "3 Monate": 90, "1 Jahr": 365}
+_DELTA_PERIOD_DEFAULT = "Tag"
+
+
+def _period_delta(history: pd.DataFrame | None, column: str, days: int,
+                  current: float) -> str | None:
+    past = performance.value_n_days_ago(history, column, days)
+    if past is None:
         return None
-    return float(history["Gesamt"].iloc[-2])
+    change = current - past
+    pct_txt = f" ({change / past * 100:+.1f} %)" if past else ""
+    return f"{change:+,.2f} €{pct_txt}"
 
 
 def _allocation_rows(stock_total: float, crypto_total: float, cash: float) -> list[dict]:
@@ -64,6 +76,7 @@ def _render_rebalancing(rows: list[dict], total: float):
             direction = "reduzieren" if deviation > 0 else "aufbauen"
             hints.append(f"{row['Name']} {direction} ({deviation:+.1f} %-Pkt. / {adjust_eur:+,.0f} €)")
     st.markdown("#### Zielallokation")
+    components.render_mobile_scroll_hint()
     st.dataframe(
         pd.DataFrame(table), hide_index=True, width="stretch",
         column_config={
@@ -88,8 +101,8 @@ def _render_performance(history: pd.DataFrame | None):
     if len(history) < 2:
         st.caption("Der Verlauf beginnt gerade erst - jeder Tag fügt einen weiteren Datenpunkt hinzu. "
                    "Projektion und Vergleich kannst du trotzdem schon nutzen.")
-    modus = st.radio("Modus", ["Projektion", "Vergleich"], horizontal=True,
-                     label_visibility="collapsed", key="dashboard_mode")
+    modus = st.segmented_control("Modus", ["Projektion", "Vergleich"], default="Projektion",
+                                 label_visibility="collapsed", key="dashboard_mode") or "Projektion"
     if modus == "Projektion":
         _render_projection(history)
     else:
@@ -113,12 +126,10 @@ def _render_projection(history: pd.DataFrame):
                            key="dashboard_proj_return") / 100.0
         source = "eigene Annahme"
 
-    # Horizont-Regler; das Pensionsjahr aus den Einstellungen liefert nur den Startwert.
+    # Horizont-Regler; Standard 1 Jahr, damit der Verlauf des eigenen Portfolios
+    # im Vordergrund steht statt einer langfristigen Renten-Hochrechnung.
     profile = risk_profile()
-    default_h = 30
-    if profile["retirement_year"]:
-        default_h = min(40, max(1, int(profile["retirement_year"]) - date.today().year))
-    horizon = st.slider("Horizont (Jahre)", 1, 40, default_h, key="dashboard_proj_years")
+    horizon = st.slider("Horizont (Jahre)", 1, 40, 1, key="dashboard_proj_years")
 
     monthly = float(profile["monthly_contribution"])
     port = history["Gesamt"].dropna()
@@ -146,7 +157,7 @@ def _render_projection(history: pd.DataFrame):
     fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0),
                       legend=dict(orientation="h", y=1.08), xaxis_title=None,
                       yaxis_title="Wert (€)")
-    st.plotly_chart(fig, width="stretch", config={"responsive": True},
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False},
                     key="dashboard_proj_chart")
 
 
@@ -233,7 +244,7 @@ def _render_comparison(history: pd.DataFrame):
     fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0),
                       legend=dict(orientation="h", y=1.08), xaxis_title=None,
                       yaxis_title="Veränderung seit Portfolio-Start (%)")
-    st.plotly_chart(fig, width="stretch", config={"responsive": True},
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False},
                     key=f"dashboard_cmp_{benchmark}_{zeitraum}")
 
 
@@ -250,6 +261,7 @@ def _render_top_positions(vals: list, total: float):
                      "Wert": round(v.value_eur or 0, 2),
                      "Anteil": round((v.value_eur or 0) / total * 100, 1) if total else 0,
                      "G/V": round(v.gain_pct, 1) if v.has_cost else None})
+    components.render_mobile_scroll_hint()
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
                  column_config={
                      "Wert": st.column_config.NumberColumn("Wert (€)", format="%.2f €"),
@@ -304,6 +316,9 @@ def render():
     with st.spinner("Aktualisiere Kurse …"):
         stock_vals = valued_positions("stock")
         crypto_vals = valued_positions("crypto")
+        bot_val = crypto_bot_valuation()
+        if bot_val:
+            crypto_vals = crypto_vals + [bot_val]
     stock_total = total_value(stock_vals)
     crypto_total = total_value(crypto_vals)
     from core.db import latest_cash_balance
@@ -320,14 +335,24 @@ def render():
         if shadow.exists(scope):
             shadow.record_snapshot(scope)
     history = performance.history_df()
-    previous = _previous_total(history)
-    delta = total_wealth - previous if previous is not None else None
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Gesamtvermögen", f"{total_wealth:,.2f} €", f"{delta:+,.2f} €" if delta is not None else None)
-    c2.metric("Aktien", f"{stock_total:,.2f} €", f"{stock_total / total_wealth * 100:.1f} %" if total_wealth else None)
-    c3.metric("Krypto", f"{crypto_total:,.2f} €", f"{crypto_total / total_wealth * 100:.1f} %" if total_wealth else None)
-    c4.metric("Liquid", f"{bank_cash:,.2f} €", f"{bank_cash / total_wealth * 100:.1f} %" if total_wealth else None)
+    period_label = st.segmented_control(
+        "Veränderung über", list(_DELTA_PERIODS), default=_DELTA_PERIOD_DEFAULT,
+        key="dashboard_delta_period") or _DELTA_PERIOD_DEFAULT
+    days = _DELTA_PERIODS[period_label]
+
+    with st.container(key="dash_total_wealth"):
+        st.metric("Gesamtvermögen", f"{total_wealth:,.2f} €",
+                 _period_delta(history, "Gesamt", days, total_wealth),
+                 help=f"Veränderung gegenüber vor {period_label.lower()}.")
+
+    c2, c3, c4 = st.columns(3)
+    c2.metric("Aktien", f"{stock_total:,.2f} €", _period_delta(history, "Aktien", days, stock_total),
+             help=f"{stock_total / total_wealth * 100:.1f} % des Gesamtvermögens." if total_wealth else None)
+    c3.metric("Krypto", f"{crypto_total:,.2f} €", _period_delta(history, "Krypto", days, crypto_total),
+             help=f"{crypto_total / total_wealth * 100:.1f} % des Gesamtvermögens." if total_wealth else None)
+    c4.metric("Liquid", f"{bank_cash:,.2f} €", _period_delta(history, "Cash", days, bank_cash),
+             help=f"{bank_cash / total_wealth * 100:.1f} % des Gesamtvermögens." if total_wealth else None)
 
     _render_alerts()
 

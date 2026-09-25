@@ -75,7 +75,8 @@ with st.sidebar:
     st.caption(f"Portfolio Pro v{APP_VERSION}")
 
 # --- Navigation ---
-from views import ai_desk, ai_portfolio, asset_detail, backtest, cash, crypto, dashboard, exports, settings, stocks, transactions  # noqa: E402
+from views import (ai_desk, ai_portfolio, asset_detail, backtest, cash, crypto,
+                   dashboard, exports, settings, stocks, trading_bot, transactions)  # noqa: E402
 
 pages = {
     "Übersicht": [
@@ -93,6 +94,7 @@ pages = {
         st.Page(backtest.render, title="Bestands-Rückrechnung", icon="⏮️", url_path="backtest"),
         st.Page(ai_desk.render, title="AI Desk", icon="🧠", url_path="ai-desk"),
         st.Page(ai_portfolio.render, title="KI-Portfolios", icon="🤖", url_path="ki-portfolio"),
+        st.Page(trading_bot.render, title="Trading-Bot", icon="🛡️", url_path="trading-bot"),
     ],
     "Verwaltung": [
         st.Page(settings.render, title="Einstellungen", icon="⚙️", url_path="einstellungen"),

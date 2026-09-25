@@ -21,8 +21,8 @@ def _render_booking_form():
     has_cash = db.latest_cash_balance() is not None
     with st.form("trade_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
-        side_label = c1.radio("Art", ["Kauf", "Verkauf"], horizontal=True)
-        asset_label = c2.radio("Anlageklasse", ["Aktie", "Krypto"], horizontal=True)
+        side_label = c1.segmented_control("Art", ["Kauf", "Verkauf"], default="Kauf") or "Kauf"
+        asset_label = c2.segmented_control("Anlageklasse", ["Aktie", "Krypto"], default="Aktie") or "Aktie"
         trade_date = c3.date_input("Buchungsdatum")
         c4, c5, c6 = st.columns(3)
         symbol = c4.text_input("Symbol", placeholder="z. B. NVDA oder BTC").strip().upper()
@@ -76,6 +76,7 @@ def _render_history():
                      "Symbol": tx["symbol"], "Anlageklasse": "Aktie" if tx["asset_type"] == "stock" else "Krypto",
                      "Konto": tx["category"], "Menge": tx["quantity"], "Preis (€)": tx["price_eur"],
                      "Gebühr (€)": tx["fees_eur"], "Volumen (€)": gross, "Notiz": tx["note"]})
+    components.render_mobile_scroll_hint()
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True,
                  column_config={
                      "Preis (€)": st.column_config.NumberColumn(format="%.4f €"),

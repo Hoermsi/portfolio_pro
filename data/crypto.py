@@ -196,6 +196,50 @@ def get_history(symbol: str, days: int = 365) -> pd.DataFrame | None:
     return _kraken_ohlc_eur(symbol, days)
 
 
+def get_top_market_cap(limit: int = 250) -> list[dict]:
+    """Top-`limit` Coins nach Marktkapitalisierung, EIN `/coins/markets`-Request
+    OHNE `ids=` (anders als get_market_data_batch(), das gezielt bekannte
+    Symbole bepreist - hier wird umgekehrt erst das Universum ermittelt).
+    Grundlage für core.bot_universe's Kandidaten-Filter (Mindestmarktkap. +
+    "etablierter Altcoin").
+
+    `/coins/markets` liefert KEIN `genesis_date` (das steht nur auf dem
+    Detail-Endpoint `/coins/{id}`, ein Request je Coin - bei bis zu `limit`
+    Coins würde das die Ein-Request-Disziplin dieses Moduls verletzen und das
+    enge Rate-Limit sprengen). Als Näherung für "seit wann aktiv gehandelt"
+    dient deshalb `min(ath_date, atl_date)` - der frühere der beiden ist der
+    älteste Preis-Datenpunkt, den CoinGecko für den Coin überhaupt kennt, und
+    liegt damit zwingend auf oder nach dem tatsächlichen Listing.
+
+    Leere Liste bei Fehlschlag (gleiches Degradations-Muster wie der Rest
+    des Moduls), keine Exception nach oben."""
+    try:
+        rows = _get("/coins/markets", {
+            "vs_currency": "eur", "order": "market_cap_desc",
+            "per_page": min(250, limit), "page": 1,
+        })
+    except Exception as e:
+        print(f"crypto.get_top_market_cap: {e}")
+        return []
+    out = []
+    for r in rows:
+        symbol = str(r.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        ath_date = r.get("ath_date")
+        atl_date = r.get("atl_date")
+        earliest = min(d for d in (ath_date, atl_date) if d) if (ath_date or atl_date) else None
+        out.append({
+            "symbol": symbol,
+            "rang": r.get("market_cap_rank"),
+            "marktkap_eur": r.get("market_cap"),
+            "volumen_24h_eur": r.get("total_volume"),
+            "kurs_eur": r.get("current_price"),
+            "aeltester_datenpunkt": earliest,
+        })
+    return out
+
+
 def get_market_data_batch(symbols) -> dict[str, dict]:
     """Marktdaten (u.a. ATH-Abstand) für mehrere Symbole in EINEM CoinGecko-
     Request (/coins/markets) - wie get_prices_eur() nie einzeln pro Coin

@@ -34,32 +34,46 @@ SENIOR_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Wie SENIOR_SCHEMA, aber zusätzlich mit konkreten Cash-Einsatz-Vorschlägen für
-# das Portfolio-Review (frei investierbares Cash entlang der Zielallokation).
-PORTFOLIO_SENIOR_SCHEMA = {
-    "type": "object",
-    "properties": {
-        **SENIOR_SCHEMA["properties"],
-        "cash_vorschlaege": {
-            "type": "array",
-            "description": "Konkrete Vorschläge, freies Cash einzusetzen. Leer, wenn kein "
-                           "Cash über der Ziel-Reserve frei ist.",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "betrag_eur": {"type": "number", "description": "einzusetzender Betrag in EUR"},
-                    "symbol": {"type": "string", "description": "Ziel-Instrument, z.B. IWDA oder BTC"},
-                    "asset_type": {"type": "string", "enum": ["stock", "crypto", "cash"]},
-                    "begruendung": {"type": "string", "description": "kurze Begründung auf Deutsch"},
+# Erlaubte Ziel-Asset-Typen fuer Cash-Vorschlaege je Review-Scope - dasselbe
+# Prinzip wie agents.strategist._schema_for(): ein auf Krypto (oder Aktien)
+# beschraenktes Review darf ueber 'cash_vorschlaege' nicht implizit doch das
+# gesamte Portfolio ansprechen, indem es einen Kauf in der jeweils ANDEREN
+# Anlageklasse vorschlaegt.
+_CASH_TARGET_TYPES = {"all": ["stock", "crypto", "cash"], "stock": ["stock", "cash"],
+                      "crypto": ["crypto", "cash"]}
+
+
+def portfolio_senior_schema(scope: str = "all") -> dict:
+    """Wie SENIOR_SCHEMA, aber zusätzlich mit konkreten Cash-Einsatz-Vorschlägen für
+    das Portfolio-Review (frei investierbares Cash entlang der Zielallokation).
+    `asset_type` ist auf den gewählten Analyse-Bereich beschränkt (siehe
+    _CASH_TARGET_TYPES) - sonst könnte ein Review mit scope='crypto' trotzdem
+    einen Aktienkauf vorschlagen, obwohl der Nutzer explizit nur den
+    Krypto-Teil betrachten wollte."""
+    return {
+        "type": "object",
+        "properties": {
+            **SENIOR_SCHEMA["properties"],
+            "cash_vorschlaege": {
+                "type": "array",
+                "description": "Konkrete Vorschläge, freies Cash einzusetzen. Leer, wenn kein "
+                               "Cash über der Ziel-Reserve frei ist.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "betrag_eur": {"type": "number", "description": "einzusetzender Betrag in EUR"},
+                        "symbol": {"type": "string", "description": "Ziel-Instrument, z.B. IWDA oder BTC"},
+                        "asset_type": {"type": "string", "enum": _CASH_TARGET_TYPES[scope]},
+                        "begruendung": {"type": "string", "description": "kurze Begründung auf Deutsch"},
+                    },
+                    "required": ["betrag_eur", "symbol", "asset_type", "begruendung"],
+                    "additionalProperties": False,
                 },
-                "required": ["betrag_eur", "symbol", "asset_type", "begruendung"],
-                "additionalProperties": False,
             },
         },
-    },
-    "required": SENIOR_SCHEMA["required"] + ["cash_vorschlaege"],
-    "additionalProperties": False,
-}
+        "required": SENIOR_SCHEMA["required"] + ["cash_vorschlaege"],
+        "additionalProperties": False,
+    }
 
 
 def parse_json(text: str) -> dict | None:

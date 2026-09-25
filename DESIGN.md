@@ -133,6 +133,8 @@ Zwei parallele Grün/Rot-Paare sind aktuell im Code aktiv — dokumentiert wie v
 
 **Die Doppel-Ampel-Inkonsistenz.** Data Green/Red (`#23c55e`/`#ff4b4b`) und Metric Green/Rose (`#4ade80`/`#fb7185`) sind zwei separate, historisch gewachsene Paare für dieselbe Gewinn/Verlust-Semantik. Das ist aktuell so im Code, aber keine bewusste Design-Entscheidung — bei nächster Gelegenheit auf ein einziges Paar vereinheitlichen, statt ein drittes hinzuzufügen.
 
+**Notbremse-Rot.** Data Red (`#ff4b4b`) als volle Button-Fläche ist ausschließlich dem Kill-Switch-Button auf der Trading-Bot-Seite vorbehalten (`views/trading_bot.py`, `div[class*="st-key-bot_kill_action"]` in `ui/components.py`) — die einzige bewusste Ausnahme von der Grün/Rot-nur-für-G/V-Regel, weil hier Rot als universelles "Stopp/Gefahr"-Signal gebraucht wird, nicht als Verlust-Anzeige. Keine weitere Aktion (auch keine andere destruktive) bekommt diese Fläche.
+
 ## 3. Typography
 
 **Body/Display Font:** Source Sans Pro (Streamlit-Standard-Systemfont, kein eigener Font-Import im Projekt)
@@ -218,3 +220,4 @@ Alle Komponenten sind Streamlit-native Bausteine (`st.metric`, `st.dataframe`, `
 - **Don't** Drop-Shadows für Karten oder Buttons einführen, auch nicht subtil bei Hover — bricht die Flach-durch-Verlauf-Regel.
 - **Don't** eine zweite Akzentfarbe neben Mint-Eyebrow (`#6ee7b7`) einführen, ohne eine klare neue Rolle dafür zu definieren — das System lebt von der Zurückhaltung.
 - **Don't** `st.button(type="primary")` ungestylt lassen — Streamlits Default-Rot (`#ff4b4b`) ist identisch mit Data Red und würde jede kostenpflichtige/destruktive Aktion wie eine Verlust-Warnung aussehen lassen. Immer über `button[kind="primary"]` in `apply_theme()` führen (siehe Components → Buttons).
+- **Don't** Data Red als Button-Fläche für weitere Aktionen verwenden — das bleibt die eine dokumentierte Ausnahme des Kill-Switches (siehe Named Rule „Notbremse-Rot" oben), kein allgemeines Muster für „wichtige/destruktive Aktion".

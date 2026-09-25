@@ -14,3 +14,7 @@ build/_pybuild/
 
 # Laufzeitzustand lokaler Preview-Server (enthält Session-Token)
 .impeccable/live/
+
+# Lokale Test-/Audit-Artefakte
+.audit_pytest_tmp/
+.audit_pytest_verified/

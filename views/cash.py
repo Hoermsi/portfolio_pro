@@ -63,11 +63,22 @@ def _render_balance():
     st.number_input("Neuer Kontostand (€)", min_value=0.0, step=50.0,
                     format="%.2f", key="cash_amount")
 
-    btn_cols = st.columns(len(_QUICK_STEPS))
-    for col, step in zip(btn_cols, _QUICK_STEPS):
-        label = f"{step:+,} €".replace(",", ".")
-        col.button(label, key=f"cash_step_{step}", width="stretch",
-                   on_click=_adjust_amount, args=(float(step),))
+    # 2 Reihen à 4 statt 1 Reihe à 8: auf dem Handy sonst 8 kaum noch
+    # tippbare ~40px-Spalten. st.columns stapelt unterhalb von Streamlits
+    # eigenem Breakpoint aber JEDE Spalte auf 100% Breite (min-width:
+    # calc(100% - 24px) je stColumn) - bei 4 Spalten waeren das trotzdem
+    # 8 einzeln gestapelte volle Zeilen. Die st-key-Container geben den
+    # Reihen eine CSS-Angriffsflaeche (siehe apply_theme()-Medienquery),
+    # die diesen Auto-Stack fuer genau diese zwei Reihen aufhebt, damit
+    # aus "8 gequetschte Spalten" auf Mobile "2 Reihen à 4" werden statt
+    # "8 gestapelte Vollbreite-Buttons".
+    for i, row_steps in enumerate((_QUICK_STEPS[:4], _QUICK_STEPS[4:])):
+        with st.container(key=f"cash_quick_row_{i}"):
+            btn_cols = st.columns(4)
+            for col, step in zip(btn_cols, row_steps):
+                label = f"{step:+,} €".replace(",", ".")
+                col.button(label, key=f"cash_step_{step}", width="stretch",
+                           on_click=_adjust_amount, args=(float(step),))
 
     if st.button("💾 Stand aktualisieren", type="primary"):
         db.add_cash_entry(float(st.session_state["cash_amount"]))
@@ -88,7 +99,8 @@ def _render_balance():
                   labels={"balance_eur": "Kontostand (€)"})
     fig.update_traces(line_color="#23c55e")
     fig.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0))
-    st.plotly_chart(fig, width="stretch", key="cash_history_chart")
+    st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False},
+                    key="cash_history_chart")
 
     with st.expander(f"🗂️ Alle Einträge ({len(entries)})"):
         table = pd.DataFrame({

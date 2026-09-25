@@ -1,7 +1,9 @@
 """Dossier-Aufbau: sammelt alle Daten zu einem Asset bzw. zum Portfolio,
 die den Spezialisten-Agenten als Kontext dienen."""
 import json
+from concurrent.futures import ThreadPoolExecutor
 
+from analysis import market_timing
 from analysis import risk as risk_analysis
 from analysis import technical
 from core import db
@@ -9,6 +11,7 @@ from core.portfolio import portfolio_summary, value_position
 from core.profile import emergency_fund_eur, risk_profile, target_allocation
 from data import crypto as crypto_data
 from data import news as news_data
+from data import sentiment
 from data import stocks as stock_data
 
 
@@ -224,3 +227,30 @@ def portfolio_prompt(d: dict) -> str:
     lines += ["", "CASH & ZIELALLOKATION:", cash_allocation_prompt()]
     lines += ["", risk_profile_prompt()]
     return "\n".join(lines)
+
+
+def crypto_market_readings() -> tuple[dict, int | None]:
+    """Alle Krypto-Sentiment-Quellen parallel holen - identisches Muster wie
+    views/asset_detail.py:_fetch_crypto_readings() (dort für die
+    UI-Marktanalyse), hier als eigene Funktion, damit agents/trader.py sie
+    ohne View-Import nutzen kann. Rückgabe direkt geeignet für
+    analysis.market_timing.market_temperature(readings, market="crypto")."""
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {
+            "fear_greed": pool.submit(sentiment.fear_greed),
+            "mayer": pool.submit(market_timing.mayer_multiple),
+            "breadth": pool.submit(sentiment.altcoin_breadth_30d),
+            "global": pool.submit(sentiment.global_metrics),
+            "meme": pool.submit(sentiment.meme_market),
+            "coinbase_rank": pool.submit(sentiment.coinbase_app_rank),
+        }
+        results = {k: f.result() for k, f in futures.items()}
+    readings = {
+        "fear_greed": results["fear_greed"],
+        "mayer": results["mayer"],
+        "breadth": results["breadth"],
+        "btc_dominance": results["global"],
+        "meme": results["meme"],
+        "stablecoin_dominance": results["global"],
+    }
+    return readings, results["coinbase_rank"]

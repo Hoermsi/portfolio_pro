@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 
 from agents import dossier as dossier_mod
-from agents.base import PORTFOLIO_SENIOR_SCHEMA, SENIOR_SCHEMA, run_json_agent
+from agents.base import SENIOR_SCHEMA, portfolio_senior_schema, run_json_agent
 from agents.specialists import SPECIALISTS, run_specialist
 from core import db
 from core.models import AgentReport
@@ -17,14 +17,27 @@ _SENIOR_SYSTEM = (
     "gesamtscore: 0 = klarer Verkauf, 100 = klarer Kauf."
 )
 
-_PORTFOLIO_SENIOR_SYSTEM = (
-    _SENIOR_SYSTEM + " Dir liegen zusätzlich Cash-Bestand und Zielallokation des "
-    "Nutzers vor. Wenn freies Cash über der Ziel-Cash-Reserve vorhanden ist, mache "
-    "in 'cash_vorschlaege' KONKRETE Vorschläge mit EUR-Betrag und Symbol, die die "
-    "Ist-Allokation Richtung Ziel bewegen (neue Aktien/ETFs erlaubt). Ist kein Cash "
-    "frei, gib 'cash_vorschlaege' als leere Liste zurück. Die Summe der Vorschläge "
-    "darf das frei investierbare Cash nicht überschreiten."
-)
+# Je Scope, WELCHE Anlageklasse fuer Cash-Vorschlaege erlaubt ist - muss zum
+# asset_type-Enum in agents.base.portfolio_senior_schema() passen. Sonst
+# wuerde ein auf Krypto beschraenktes Review (scope='crypto') trotzdem einen
+# Aktienkauf ins Auge fassen, nur weil das Cash zufaellig frei ist - das
+# Review soll aber NUR den gewaehlten Bereich betrachten.
+_CASH_SCOPE_HINT = {
+    "all": "neue Aktien/ETFs UND Krypto erlaubt",
+    "stock": "AUSSCHLIESSLICH neue Aktien/ETFs - kein Krypto-Vorschlag, auch wenn Cash frei ist",
+    "crypto": "AUSSCHLIESSLICH Krypto - kein Aktien-/ETF-Vorschlag, auch wenn Cash frei ist",
+}
+
+
+def _portfolio_senior_system(scope: str) -> str:
+    return (
+        _SENIOR_SYSTEM + " Dir liegen zusätzlich Cash-Bestand und Zielallokation des "
+        "Nutzers vor. Wenn freies Cash über der Ziel-Cash-Reserve vorhanden ist, mache "
+        "in 'cash_vorschlaege' KONKRETE Vorschläge mit EUR-Betrag und Symbol, die die "
+        f"Ist-Allokation Richtung Ziel bewegen ({_CASH_SCOPE_HINT[scope]}). Ist kein Cash "
+        "frei, gib 'cash_vorschlaege' als leere Liste zurück. Die Summe der Vorschläge "
+        "darf das frei investierbare Cash nicht überschreiten."
+    )
 
 
 def _reports_block(reports: dict[str, AgentReport]) -> str:
@@ -148,7 +161,7 @@ def run_portfolio_review(scope: str, specialist_model: str, senior_model: str,
         f"== BERICHT RISIKO-MANAGER ==\n{_reports_block({'risiko': risk_report})}"
     )
     senior, senior_usage, senior_err = run_json_agent(
-        _PORTFOLIO_SENIOR_SYSTEM, senior_prompt, senior_model, PORTFOLIO_SENIOR_SCHEMA
+        _portfolio_senior_system(scope), senior_prompt, senior_model, portfolio_senior_schema(scope)
     )
 
     total_cost = risk_report.usage.get("cost_usd", 0) + senior_usage.get("cost_usd", 0)

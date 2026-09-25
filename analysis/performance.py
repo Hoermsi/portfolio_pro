@@ -47,6 +47,30 @@ def history_df() -> pd.DataFrame | None:
     return pivot
 
 
+def value_n_days_ago(history: pd.DataFrame | None, column: str, days: int) -> float | None:
+    """Letzter bekannter Wert VOR `days` Tagen (asof, kein exakter Kalender-
+    tag-Treffer nötig - ein Snapshot entsteht nur, wenn das Dashboard an dem
+    Tag geöffnet wurde). Für `days <= 1` exakt der vorletzte Snapshot (ein
+    Snapshot pro Tag, siehe record_snapshots()), unabhängig davon, wie lange
+    dieser tatsächlich zurückliegt.
+
+    None, wenn die Historie nicht so weit zurückreicht - der Aufrufer zeigt
+    dann bewusst keine Veränderung an, statt eine falsche Basis (z.B. den
+    ältesten verfügbaren Wert) zu erfinden."""
+    if history is None or column not in history:
+        return None
+    series = history[column].dropna()
+    if len(series) < 2:
+        return None
+    if days <= 1:
+        return float(series.iloc[-2])
+    cutoff = series.index[-1] - pd.Timedelta(days=days)
+    before = series[series.index <= cutoff]
+    if before.empty:
+        return None
+    return float(before.iloc[-1])
+
+
 def performance_index(history: pd.DataFrame | None = None) -> pd.DataFrame | None:
     """Bereinigter Renditeindex (Start = 100) aus Tageswerten und Kapitalflüssen.
 

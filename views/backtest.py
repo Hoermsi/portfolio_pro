@@ -49,7 +49,9 @@ def render():
                            "zurück - kein regelbasierter Backtest mit Handelsentscheidungen.")
 
     c1, c2, c3 = st.columns([1.3, 1, 1])
-    scope_label = c1.radio("Umfang", list(_SCOPES.keys()), horizontal=True, key="bt_scope")
+    scope_options = list(_SCOPES.keys())
+    scope_label = c1.segmented_control("Umfang", scope_options, default=scope_options[0],
+                                       key="bt_scope") or scope_options[0]
     scope = _SCOPES[scope_label]
     default_start = date.today() - timedelta(days=365)
     start_date = c2.date_input("Kaufdatum", value=default_start,
@@ -112,7 +114,8 @@ def render():
         fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0),
                           xaxis_title=None, yaxis_title="Wert (€)",
                           legend=dict(orientation="h", y=1.12))
-        st.plotly_chart(fig, width="stretch", key=f"bt_curve_{scope}")
+        st.plotly_chart(fig, width="stretch", config={"responsive": True, "displayModeBar": False},
+                        key=f"bt_curve_{scope}")
 
     if bench_curve is not None:
         b_end = float(bench_curve.iloc[-1])
