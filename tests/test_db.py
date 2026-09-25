@@ -125,7 +125,7 @@ def test_migration_from_v1_json(tmp_path, monkeypatch):
     legacy = tmp_path / "portfolio.json"
     legacy.write_text(json.dumps({
         "Standard": [{"symbol": "NVDA", "quantity": 10.0, "buy_price": 100.0}],
-        "Flatex-Import": [{"symbol": "FR0010755611", "quantity": 0.659, "buy_price": 17.314}],
+        "Flatex-Import": [{"symbol": "IE00B4L5Y983", "quantity": 5.0, "buy_price": 80.0}],
     }), encoding="utf-8")
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
     monkeypatch.setattr(config, "LEGACY_PORTFOLIO_JSON", legacy)
@@ -133,8 +133,8 @@ def test_migration_from_v1_json(tmp_path, monkeypatch):
     from core import db
     db.init_db()
     positions = db.list_positions("stock")
-    assert {p.symbol for p in positions} == {"NVDA", "FR0010755611"}
-    flatex = next(p for p in positions if p.symbol == "FR0010755611")
+    assert {p.symbol for p in positions} == {"NVDA", "IE00B4L5Y983"}
+    flatex = next(p for p in positions if p.symbol == "IE00B4L5Y983")
     assert flatex.source == "flatex"
 
     # Zweiter Start migriert nicht erneut

@@ -118,7 +118,7 @@ Tool-Use-Chat: `get_portfolio_summary`, `get_asset_data`, `get_shadow_portfolio`
 
 ## Wichtige Nicht-Offensichtlichkeiten (aus Bugfixes dieser Session)
 
-- **FX-Härtung** (`data/fx.py`): yfinance liefert unter Last gelegentlich einen komplett falschen Kurs (z.B. USD→EUR als ~210 statt 0,875 – hat einmal eine NVDA-Position auf 44.000 € statt 184 € hochgerechnet). Plausibilitätsband `1e-5 < rate < 5.0`; Ausreißer werden verworfen, letzter guter Wert wird verwendet statt 1h lang einen Fehlwert zu cachen.
+- **FX-Härtung** (`data/fx.py`): yfinance liefert unter Last gelegentlich einen komplett falschen Kurs (z.B. USD→EUR als ~210 statt 0,875 – hat einmal eine Position auf rund das 240-Fache ihres echten Werts hochgerechnet). Plausibilitätsband `1e-5 < rate < 5.0`; Ausreißer werden verworfen, letzter guter Wert wird verwendet statt 1h lang einen Fehlwert zu cachen.
 - **Krypto-Kurse als Batch**: `data/crypto.get_prices_eur(symbols)` holt **alle** Portfolio-Coins in einem CoinGecko-Request (freies Rate-Limit ist eng), mit Kraken-Public-Ticker als Fallback für Kurs **und** Historie (`_kraken_ohlc_eur`). Nie einzeln pro Coin abfragen.
 - **EUR ist 1:1 gepegt**: `_EUR_PEGGED = {"EUR","EURC","EURT","EURR"}` – wird nie an CoinGecko/Kraken geschickt (würde falsch auflösen). Kraken-EUR-Cash (inkl. `.HOLD`) landet als Position `symbol="EUR", asset_type="crypto"` und wird bei `shadow.init_from_real` automatisch zu einer Cash-Position im Krypto-KI-Depot.
 - **Plotly-Chart-`key`s sind Pflicht**: Sobald zwei Reports/Charts auf derselben Seite stehen (Historie, Live+Historie, zwei Scope-Tabs), führt ein fehlender `key` zu `StreamlitDuplicateElementId`. Immer `key=f"..._{scope}"` o.ä. vergeben.
