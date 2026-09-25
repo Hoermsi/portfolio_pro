@@ -67,7 +67,7 @@ Quelle: schreibgeschützter Auszug aus `C:/Users/Rene/AppData/Local/PortfolioPro
 - Der Override für gleichgerichtete Positionen erhöht das Limit gegenüber dem Stufe-10-Standard von 3 auf 5. Bei deaktivierten Shorts können damit alle fünf Positionen gleichzeitig Long sein.
 - Zuletzt gespeicherter erfolgreicher Runner-Zyklus: **23.09.2026, 15:50:58 UTC**. Das belegt einen gespeicherten Zyklus, nicht allein die aktuelle Prozessgesundheit.
 - **Vier offene Bot-Positionen**, alle unter Version 2.3, aber mit unterschiedlichen Konfigurations-Hashes.
-- **Zehn geschlossene Bot-Positionen** über Version 2.2 und 2.3: summierter gespeicherter realisierter PnL rund **−22,34 $**. Zusätzlich eine übernommene Position mit **−6,23 $**, getrennt zu betrachten.
+- **Zehn geschlossene Bot-Positionen** über Version 2.2 und 2.3: summierter gespeicherter realisierter PnL **negativ**. Zusätzlich eine übernommene Position mit Verlust, getrennt zu betrachten.
 
 Diese Beträge sind weder eine zeitgewichtete Rendite noch die vollständige Nettoperformance: offene Gewinne/Verluste und Funding sind darin nicht vollständig abgebildet; historische Betriebsmodi wurden nicht für jede Position rekonstruiert. Zudem ist die oben beschriebene Buchhaltungslücke zu berücksichtigen. Für Version 2.3 allein liegt erst eine geschlossene, vom Bot eröffnete Position vor; daraus ist keine belastbare Erfolgsquote ableitbar.
 
